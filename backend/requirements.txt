@@ -16,6 +16,8 @@ langchain==0.3.27
 langgraph==0.6.4
 langchain-openai==0.3.29
 langchain-community==0.3.27
+langchain-anthropic==0.3.18
+langchain-google-genai==2.1.9
 
 # Vector Database
 qdrant-client==1.15.1
