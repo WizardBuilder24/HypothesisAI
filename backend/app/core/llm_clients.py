@@ -2,10 +2,6 @@
 LLM Client implementations for different providers
 """
 
-"""
-LLM Client implementations using LangChain integrations
-"""
-
 from typing import Optional, Dict, Any, AsyncGenerator, List
 import os
 from enum import Enum
