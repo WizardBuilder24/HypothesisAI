@@ -3,7 +3,7 @@
 import json
 from typing import List, Dict, Any
 from app.agents.base import BaseAgent
-from app.schemas import ResearchState, Paper, WorkflowStatus
+from app.state import ResearchState, Paper, WorkflowStatus
 from app.agents.prompts import format_prompt
 from app.core.state_management import update_state_status, add_error
 import logging
@@ -19,14 +19,13 @@ class LiteratureHunterAgent(BaseAgent):
         Initialize Literature Hunter
         
         Args:
-            llm_client: LLM client for query expansion
             search_client: Client for searching paper databases
         """
         super().__init__(
             name="literature_hunter",
-            description="Searches multiple databases for relevant papers"
+            description="Searches multiple databases for relevant papers",
+            llm_client=llm_client
         )
-        self.llm_client = llm_client
         self.search_client = search_client
     
     async def process(self, state: ResearchState) -> ResearchState:

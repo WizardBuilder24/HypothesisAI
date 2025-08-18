@@ -2,7 +2,7 @@
 
 from typing import List, Dict, Any
 from app.agents.base import BaseAgent
-from app.schemas import ResearchState, Hypothesis, WorkflowStatus
+from app.state import ResearchState, Hypothesis, WorkflowStatus
 from app.agents.prompts import format_prompt
 from app.core.state_management import update_state_status, add_error
 import json
@@ -24,9 +24,9 @@ class HypothesisGeneratorAgent(BaseAgent):
         """
         super().__init__(
             name="hypothesis_generator",
-            description="Generates novel research hypotheses"
+            description="Generates novel research hypotheses",
+            llm_client=llm_client
         )
-        self.llm_client = llm_client
         self.creativity_temperature = creativity_temperature
     
     async def process(self, state: ResearchState) -> ResearchState:

@@ -2,7 +2,7 @@
 
 from typing import List, Dict, Any
 from app.agents.base import BaseAgent
-from app.schemas import ResearchState, Pattern, Synthesis, WorkflowStatus
+from app.state import ResearchState, Pattern, Synthesis, WorkflowStatus
 from app.agents.prompts import format_prompt
 from app.core.state_management import update_state_status, add_error
 import json
@@ -23,9 +23,9 @@ class KnowledgeSynthesizerAgent(BaseAgent):
         """
         super().__init__(
             name="knowledge_synthesizer",
-            description="Synthesizes patterns and findings from papers"
+            description="Synthesizes patterns and findings from papers",
+            llm_client=llm_client
         )
-        self.llm_client = llm_client
     
     async def process(self, state: ResearchState) -> ResearchState:
         """

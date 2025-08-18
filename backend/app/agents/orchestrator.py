@@ -10,7 +10,7 @@ from langgraph.graph import CompiledGraph
 import logging
 from datetime import datetime
 
-from app.schemas import (
+from app.state import (
     ResearchState,
     AgentType,
     WorkflowStatus,

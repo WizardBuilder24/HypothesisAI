@@ -2,7 +2,7 @@
 
 from typing import List, Dict, Any
 from app.agents.base import BaseAgent
-from app.schemas import ResearchState, ValidationResult, WorkflowStatus
+from app.state import ResearchState, ValidationResult, WorkflowStatus
 from app.agents.prompts import format_prompt
 from app.core.state_management import update_state_status, add_error
 import json
@@ -24,9 +24,9 @@ class ValidationAgent(BaseAgent):
         """
         super().__init__(
             name="validation",
-            description="Validates hypotheses and methodologies"
+            description="Validates hypotheses and methodologies",
+            llm_client=llm_client
         )
-        self.llm_client = llm_client
         self.strict_mode = strict_mode
     
     async def process(self, state: ResearchState) -> ResearchState:

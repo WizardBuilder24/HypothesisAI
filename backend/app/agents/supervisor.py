@@ -5,7 +5,7 @@ Makes intelligent routing decisions based on workflow state
 
 from typing import Optional, Dict, Any, List
 from app.agents.base import BaseAgent
-from app.schemas import (
+from app.state import (
     ResearchState, 
     AgentType, 
     WorkflowStatus, 
@@ -34,9 +34,9 @@ class SupervisorAgent(BaseAgent):
         """
         super().__init__(
             name="supervisor",
-            description="Orchestrates workflow and makes routing decisions"
+            description="Orchestrates workflow and makes routing decisions",
+            llm_client=llm_client
         )
-        self.llm_client = llm_client
         
         # Configuration with defaults
         self.config = config or {}

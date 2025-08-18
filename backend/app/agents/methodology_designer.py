@@ -2,7 +2,7 @@
 
 from typing import List, Dict, Any
 from app.agents.base import BaseAgent
-from app.schemas import ResearchState, Methodology, WorkflowStatus
+from app.state import ResearchState, Methodology, WorkflowStatus
 from app.agents.prompts import format_prompt
 from app.core.state_management import update_state_status, add_error
 import json
@@ -23,9 +23,9 @@ class MethodologyDesignerAgent(BaseAgent):
         """
         super().__init__(
             name="methodology_designer",
-            description="Designs experimental methodologies for hypotheses"
+            description="Designs experimental methodologies for hypotheses",
+            llm_client=llm_client
         )
-        self.llm_client = llm_client
     
     async def process(self, state: ResearchState) -> ResearchState:
         """

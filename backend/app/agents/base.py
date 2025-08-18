@@ -4,23 +4,25 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 import logging
 
-from app.schemas import ResearchState
+from app.state import ResearchState
 
 
 class BaseAgent(ABC):
     """Base class for all agents in the research workflow"""
     
-    def __init__(self, name: str, description: str = ""):
+    def __init__(self, name: str, description: str = "", llm_client=None):
         """
         Initialize base agent
         
         Args:
             name: Agent name
             description: Agent description
+            llm_client: LLM client instance
         """
         self.name = name
         self.description = description
         self.logger = logging.getLogger(f"agent.{name}")
+        self.llm_client = llm_client
         
     @abstractmethod
     async def process(self, state: ResearchState) -> ResearchState:
