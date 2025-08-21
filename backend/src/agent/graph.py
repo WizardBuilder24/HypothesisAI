@@ -6,6 +6,8 @@ Minimal implementation with 5 essential nodes
 import os
 from typing import Literal, List, Dict, Any, Optional
 from datetime import datetime, timezone
+import asyncio
+import time
 from dotenv import load_dotenv
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -76,6 +78,9 @@ def supervisor(state: ResearchState, config: RunnableConfig) -> Dict[str, Any]:
     # Get structured decision from LLM
     structured_llm = llm.with_structured_output(SupervisorDecision)
     decision = structured_llm.invoke(formatted_prompt)
+    
+    # Rate limiting: small delay to respect Gemini quota (30 req/min = 2 sec between calls)
+    time.sleep(2.5)
 
     # Record stage information for debugging/visibility
     try:
@@ -155,6 +160,9 @@ def literature_hunter(state: ResearchState, config: RunnableConfig) -> Dict[str,
     # Get structured paper list from LLM (mock search for now)
     structured_llm = llm.with_structured_output(PaperList)
     paper_results = structured_llm.invoke(formatted_prompt)
+    
+    # Rate limiting delay
+    time.sleep(2.5)
 
     # Record stage information
     try:
@@ -224,6 +232,9 @@ def synthesizer(state: ResearchState, config: RunnableConfig) -> Dict[str, Any]:
     # Get structured synthesis from LLM
     structured_llm = llm.with_structured_output(SynthesisResult)
     synthesis = structured_llm.invoke(formatted_prompt)
+    
+    # Rate limiting delay
+    time.sleep(2.5)
 
     # Record stage
     try:
@@ -281,6 +292,9 @@ def hypothesis_generator(state: ResearchState, config: RunnableConfig) -> Dict[s
     # Get structured hypotheses from LLM
     structured_llm = llm.with_structured_output(HypothesisList)
     hypotheses_result = structured_llm.invoke(formatted_prompt)
+    
+    # Rate limiting delay
+    time.sleep(2.5)
 
     # Record stage
     try:
@@ -353,6 +367,9 @@ def validator(state: ResearchState, config: RunnableConfig) -> Dict[str, Any]:
         # Get structured validation
         structured_llm = llm.with_structured_output(ValidationResult)
         validation = structured_llm.invoke(formatted_prompt)
+        
+        # Rate limiting delay between hypothesis validations
+        time.sleep(2.5)
 
         # Record stage per hypothesis validation
         try:
@@ -418,7 +435,7 @@ def _get_llm(configurable: ResearchWorkflowConfiguration, temperature: float = 0
     else:
         # Default to Google
         return ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash-exp",
+            model="gemini-2.0-flash-lite",
             temperature=temperature,
             api_key=os.getenv("GEMINI_API_KEY"),
         )

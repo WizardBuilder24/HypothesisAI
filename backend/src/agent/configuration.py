@@ -52,41 +52,41 @@ class WorkflowLimits(BaseModel):
     """Workflow execution limits and thresholds."""
     
     max_papers: int = Field(
-        default=20,
+        default=5,
         description="Maximum papers to analyze per workflow",
         ge=1,
         le=100
     )
     
     min_papers_for_synthesis: int = Field(
-        default=5,
+        default=3,
         description="Minimum papers required for synthesis",
         ge=1
     )
     
     target_hypotheses_count: int = Field(
-        default=3,
+        default=2,
         description="Target number of hypotheses to generate",
         ge=1,
         le=10
     )
     
     max_workflow_iterations: int = Field(
-        default=10,
+        default=5,
         description="Maximum supervisor iterations before termination",
         ge=1,
         le=50
     )
     
     max_agent_retries: int = Field(
-        default=3,
+        default=2,
         description="Maximum retry attempts per agent on failure",
         ge=0,
         le=10
     )
     
     max_hypotheses_to_validate: int = Field(
-        default=5,
+        default=2,
         description="Maximum hypotheses to validate per workflow",
         ge=1,
         le=20
@@ -130,7 +130,7 @@ class ResearchWorkflowConfiguration(BaseModel):
     
     # Model configurations
     default_llm_model: str = Field(
-        default="gemini-2.0-flash-exp",
+    default="gemini-2.0-flash-lite",
         description="Default LLM model for all agents"
     )
     

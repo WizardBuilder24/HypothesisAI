@@ -266,20 +266,20 @@ Examples:
     parser.add_argument(
         "--literature-depth",
         type=int,
-        default=25,
-        help="Number of papers to analyze (default: 25)"
+        default=5,
+        help="Number of papers to analyze (default: 5)"
     )
     parser.add_argument(
         "--max-loops",
         type=int,
-        default=3,
-        help="Maximum number of research iteration loops (default: 3)"
+        default=2,
+        help="Maximum number of research iteration loops (default: 2)"
     )
     
     # Agent models configuration
     parser.add_argument(
         "--supervisor-model",
-        default="gpt-4-turbo-preview",
+    default="gemini-2.0-flash-lite",
         help="Model for supervisor agent (default: gpt-4-turbo-preview)"
     )
     parser.add_argument(
@@ -307,8 +307,8 @@ Examples:
     parser.add_argument(
         "--hypothesis-count",
         type=int,
-        default=3,
-        help="Number of hypotheses to generate (default: 3)"
+        default=2,
+        help="Number of hypotheses to generate (default: 2)"
     )
     parser.add_argument(
         "--experimental-validation",

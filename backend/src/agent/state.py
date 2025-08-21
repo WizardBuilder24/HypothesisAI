@@ -58,6 +58,9 @@ class ResearchState(TypedDict):
     min_papers_threshold: int
     num_hypotheses: int
     
+    # Stage recording for verbose output
+    stages: List[Dict[str, Any]]
+    
     # Error and retry tracking
     errors: Annotated[list, operator.add]
     retry_counts: Dict[str, int]
