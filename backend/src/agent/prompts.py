@@ -1,62 +1,99 @@
-"""
-Prompt templates for HypothesisAI agents
-Adapted from Google's prompt structure
+"""Prompt templates for HypothesisAI agents.
+
+This module exposes prompt templates as PromptTemplate objects. The
+PromptTemplate implements a `format(...)` method that mirrors the
+behaviour of Python `str.format` but auto-injects `current_date` and
+`current_data` into the formatting context if they are not provided.
+
+This keeps call sites like `supervisor_routing_prompt.format(...)`
+working as before while ensuring `current_data` is embedded.
 """
 
 from datetime import datetime
+import json
+from typing import Any, Dict
 
 
-def get_current_date():
-    """Get current date in readable format"""
-    return datetime.now().strftime("%B %d, %Y")
+def get_current_date() -> str:
+  """Get current date in readable format."""
+  return datetime.now().strftime("%B %d, %Y")
+
+
+class PromptTemplate:
+  """Lightweight prompt wrapper that auto-injects common fields.
+
+  Usage:
+    prompt = PromptTemplate("Hello {name}, date {current_date}")
+    prompt.format(name="Vivek")  # current_date will be injected
+  """
+
+  def __init__(self, template: str):
+    self.template = template
+
+  def _serialize_current_data(self, context: Dict[str, Any]) -> str:
+    """Serialize the provided formatting context as a readable string.
+
+    We default to a pretty-printed JSON representation. Fall back to
+    str() if JSON serialization fails.
+    """
+    try:
+      return json.dumps(context, default=str, indent=2)
+    except Exception:
+      return str(context)
+
+  def format(self, *args, **kwargs) -> str:
+    # Start from a copy so we don't mutate caller's dict
+    merged: Dict[str, Any] = dict(kwargs)
+
+    # Inject dynamic current_date if not provided
+    if "current_date" not in merged:
+      merged["current_date"] = get_current_date()
+
+    # Inject current_data as a serialization of the provided context
+    # if not explicitly supplied by the caller.
+    if "current_data" not in merged:
+      merged["current_data"] = self._serialize_current_data(merged)
+
+    return self.template.format(*args, **merged)
+
+
+# Backwards-compatible helper so other modules can import the raw string
+# if needed: prompt.template contains the original string.
 
 
 # ============================================================================
 # SUPERVISOR PROMPTS
 # ============================================================================
 
-supervisor_instructions = """You are the research workflow supervisor. Analyze the current state and route to the appropriate agent.
+supervisor_routing_prompt = PromptTemplate("""You are the research workflow supervisor. Analyze the provided state summary and choose the next agent.
 
-Current Date: {current_date}
 Research Query: {query}
 
-CURRENT STATE:
+STATE SUMMARY:
 - Papers Found: {papers_count}
-- Synthesis Complete: {has_synthesis}
-- Patterns Identified: {patterns_count}
-- Hypotheses Generated: {hypotheses_count}
-- Validation Complete: {has_validation}
-- Current Iteration: {iteration}
+- Synthesis Present: {has_synthesis}
+- Hypotheses Present: {has_hypotheses}
+- Validation Present: {has_validation}
+- Error Count: {error_count}
+- Iteration: {iteration}
+- Status Summary: {status_summary}
 
-ROUTING LOGIC:
-1. If no papers or papers < 5 → route to "literature_hunter"
-2. If papers ≥ 5 but no synthesis → route to "synthesizer"
-3. If synthesis done but no hypotheses → route to "hypothesis_generator"
-4. If hypotheses exist but no validation → route to "validator"
-5. If validation complete or iteration > 10 → route to "end"
+ROUTING RULES:
+- If no papers or papers < 5 → route to "literature_hunter"
+- If papers ≥ 5 but no synthesis → route to "synthesizer"
+- If synthesis done but no hypotheses → route to "hypothesis_generator"
+- If hypotheses exist but no validation → route to "validator"
+- If validation complete or iteration > 10 → route to "end"
 
-Format your response as a JSON object with these exact keys:
-- "next_agent": one of ["literature_hunter", "synthesizer", "hypothesis_generator", "validator", "end"]
-- "should_continue": true or false
-- "reasoning": brief explanation
-
-Example:
-```json
-{{
-    "next_agent": "synthesizer",
-    "should_continue": true,
-    "reasoning": "Found 15 papers, ready for synthesis"
-}}
-```
-
-Make your routing decision:"""
+Return a JSON object with keys: next_agent (one of ["literature_hunter","synthesizer","hypothesis_generator","validator","end"]), should_continue (true/false), and reasoning (short explanation).
+""")
 
 
 # ============================================================================
 # LITERATURE SEARCH PROMPTS
 # ============================================================================
 
-literature_search_instructions = """Generate search queries and find relevant academic papers for the research topic.
+literature_search_prompt = PromptTemplate("""Generate search queries and find relevant academic papers for the research topic.
 
 Current Date: {current_date}
 Research Query: {query}
@@ -82,14 +119,14 @@ Then provide a second JSON object with:
 - "total_found": total number found
 - "search_strategy": strategy used
 
-Focus on finding high-quality, relevant papers."""
+Focus on finding high-quality, relevant papers.""")
 
 
 # ============================================================================
 # SYNTHESIS PROMPTS
 # ============================================================================
 
-synthesis_instructions = """Analyze the research papers and synthesize patterns, findings, and gaps.
+synthesis_prompt = PromptTemplate("""Analyze the research papers and synthesize patterns, findings, and gaps.
 
 Current Date: {current_date}
 Number of Papers: {num_papers}
@@ -112,20 +149,20 @@ Format your response as a JSON object with these keys:
 - "research_gaps": list of research gap strings
 - "total_papers_analyzed": number analyzed
 
-Provide comprehensive synthesis of the research landscape."""
+Provide comprehensive synthesis of the research landscape.""")
 
 
 # ============================================================================
 # HYPOTHESIS GENERATION PROMPTS
 # ============================================================================
 
-hypothesis_generation_instructions = """Generate novel research hypotheses based on the synthesis.
+hypothesis_generation_prompt = PromptTemplate("""Generate novel research hypotheses based on the synthesis.
 
 Current Date: {current_date}
 Target: Generate {num_hypotheses} hypotheses
 
-SYNTHESIS SUMMARY:
-{synthesis_summary}
+SYNTHESIS:
+{synthesis}
 
 Requirements for each hypothesis:
 - Novel: not directly stated in existing research
@@ -135,57 +172,48 @@ Requirements for each hypothesis:
 
 Format your response as a JSON object with these keys:
 - "hypotheses": list of hypothesis objects containing:
-  - "content": the hypothesis statement
-  - "reasoning": why this hypothesis is proposed
-  - "confidence_score": confidence (0.0 to 1.0)
-  - "novelty_score": novelty (0.0 to 1.0)
-  - "feasibility_score": feasibility (0.0 to 1.0)
-- "generation_strategy": your approach
-
-Generate creative but scientifically grounded hypotheses."""
+  - "id": unique id
+  - "text": the hypothesis statement
+  - "rationale": why this hypothesis is proposed
+  - "required_data": data needed to test
+  - "potential_experiments": suggested experiments
+  - "expected_outcomes": expected results
+""")
 
 
 # ============================================================================
 # VALIDATION PROMPTS
 # ============================================================================
 
-validation_instructions = """Validate the research hypotheses for soundness and feasibility.
+validation_prompt = PromptTemplate("""Validate the hypothesis: {hypothesis}
 
 Current Date: {current_date}
 
-HYPOTHESES TO VALIDATE:
-{hypotheses_list}
+Instructions:
+- Assess logical consistency
+- Assess methodological soundness
+- Assess feasibility of testing
+- Identify supporting evidence from provided papers
 
-Validation Criteria:
-1. Logical consistency
-2. Methodological soundness
-3. Feasibility of testing
-4. Potential impact
-5. Ethical considerations
+Return a JSON object with keys:
+- "confidence_score" (0.0 to 1.0)
+- "reasoning" (text)
+- "supporting_papers" (list of paper ids)
 
-For each hypothesis, assess:
-- Is it internally consistent?
-- Can it be tested with current methods?
-- Are there major obstacles?
-- What are the main risks?
-
-Format your response as a JSON object with these keys:
-- "validation_results": list of validation objects containing:
-  - "is_valid": true or false
-  - "confidence": validation confidence (0.0 to 1.0)
-  - "issues": list of issues found
-  - "recommendations": list of recommendations
-- "overall_quality": overall quality score (0.0 to 1.0)
-- "summary": brief validation summary
-
-Provide rigorous but constructive validation."""
+Example expected output (fill these fields):
+{{
+  "confidence_score": {confidence_score},
+  "reasoning": "{reasoning}",
+  "supporting_papers": {supporting_papers}
+}}
+""")
 
 
 # ============================================================================
 # REFLECTION PROMPTS (similar to Google's)
 # ============================================================================
 
-reflection_instructions = """Analyze the current research state and identify knowledge gaps.
+reflection_instructions = PromptTemplate("""Analyze the current research state and identify knowledge gaps.
 
 Current Date: {current_date}
 Research Topic: {research_topic}
@@ -206,20 +234,20 @@ Format your response as a JSON object with these exact keys:
 Example:
 ```json
 {{
-    "is_sufficient": false,
-    "knowledge_gap": "Missing information about implementation challenges",
-    "follow_up_queries": ["What are the main implementation challenges for this approach?"]
+  "is_sufficient": false,
+  "knowledge_gap": "Missing information about implementation challenges",
+  "follow_up_queries": ["What are the main implementation challenges for this approach?"]
 }}
 ```
 
-Carefully assess the research completeness:"""
+Carefully assess the research completeness:""")
 
 
 # ============================================================================
 # FINAL ANSWER PROMPTS
 # ============================================================================
 
-answer_instructions = """Generate a comprehensive research report based on the workflow results.
+answer_instructions = PromptTemplate("""Generate a comprehensive research report based on the workflow results.
 
 Current Date: {current_date}
 Research Query: {research_topic}
@@ -237,4 +265,4 @@ Instructions:
 - Suggest future research directions
 - Use markdown formatting
 
-Generate a high-quality research report that addresses the query with actionable insights."""
+Generate a high-quality research report that addresses the query with actionable insights.""")

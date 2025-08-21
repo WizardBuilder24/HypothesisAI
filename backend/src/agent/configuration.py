@@ -1,141 +1,262 @@
 """
-Configuration for HypothesisAI research workflow
-Adapted from Google's configuration pattern
+Configuration management for HypothesisAI research workflow.
+Provides centralized configuration with environment variable support and type safety.
 """
 
 import os
 from pydantic import BaseModel, Field
-from typing import Any, Optional, Literal
+from typing import Any, Dict, Optional
 from langchain_core.runnables import RunnableConfig
 
 
-class Configuration(BaseModel):
-    """The configuration for the HypothesisAI agent"""
+class LLMTemperatureSettings(BaseModel):
+    """Temperature settings for different LLM operations."""
     
-    # Model configurations for each agent
-    supervisor_model: str = Field(
-        default="gemini-2.0-flash-exp",
-        metadata={
-            "description": "Model for the supervisor agent"
-        },
+    supervisor: float = Field(
+        default=0.3,
+        description="Low temperature for deterministic routing decisions",
+        ge=0.0,
+        le=2.0
     )
     
-    literature_model: str = Field(
-        default="gemini-2.0-flash-exp",
-        metadata={
-            "description": "Model for literature search"
-        },
+    literature_search: float = Field(
+        default=0.7,
+        description="Medium temperature for diverse search strategies",
+        ge=0.0,
+        le=2.0
     )
     
-    synthesis_model: str = Field(
-        default="gemini-2.0-flash-exp",
-        metadata={
-            "description": "Model for knowledge synthesis"
-        },
+    synthesis: float = Field(
+        default=0.5,
+        description="Balanced temperature for analytical synthesis",
+        ge=0.0,
+        le=2.0
     )
     
-    hypothesis_model: str = Field(
-        default="gemini-2.0-flash-exp",
-        metadata={
-            "description": "Model for hypothesis generation"
-        },
+    hypothesis_generation: float = Field(
+        default=0.8,
+        description="High temperature for creative hypothesis generation",
+        ge=0.0,
+        le=2.0
     )
     
-    validation_model: str = Field(
-        default="gemini-2.0-flash-exp",
-        metadata={
-            "description": "Model for hypothesis validation"
-        },
+    validation: float = Field(
+        default=0.3,
+        description="Low temperature for strict validation",
+        ge=0.0,
+        le=2.0
     )
+
+
+class WorkflowLimits(BaseModel):
+    """Workflow execution limits and thresholds."""
     
-    # Workflow parameters
     max_papers: int = Field(
         default=20,
-        metadata={"description": "Maximum number of papers to analyze"},
+        description="Maximum papers to analyze per workflow",
+        ge=1,
+        le=100
     )
     
-    min_papers_threshold: int = Field(
+    min_papers_for_synthesis: int = Field(
         default=5,
-        metadata={"description": "Minimum papers needed for synthesis"},
+        description="Minimum papers required for synthesis",
+        ge=1
     )
     
-    num_hypotheses: int = Field(
+    target_hypotheses_count: int = Field(
         default=3,
-        metadata={"description": "Number of hypotheses to generate"},
+        description="Target number of hypotheses to generate",
+        ge=1,
+        le=10
     )
     
-    max_iterations: int = Field(
+    max_workflow_iterations: int = Field(
         default=10,
-        metadata={"description": "Maximum supervisor iterations before stopping"},
+        description="Maximum supervisor iterations before termination",
+        ge=1,
+        le=50
     )
     
-    max_retries_per_agent: int = Field(
+    max_agent_retries: int = Field(
         default=3,
-        metadata={"description": "Maximum retries for each agent on failure"},
+        description="Maximum retry attempts per agent on failure",
+        ge=0,
+        le=10
     )
     
-    # Quality thresholds
-    min_confidence_threshold: float = Field(
+    max_hypotheses_to_validate: int = Field(
+        default=5,
+        description="Maximum hypotheses to validate per workflow",
+        ge=1,
+        le=20
+    )
+
+
+class QualityThresholds(BaseModel):
+    """Quality control thresholds for filtering and validation."""
+    
+    min_hypothesis_confidence: float = Field(
         default=0.5,
-        metadata={"description": "Minimum confidence score for hypotheses"},
+        description="Minimum confidence score for hypothesis acceptance",
+        ge=0.0,
+        le=1.0
     )
     
-    min_patterns_for_synthesis: int = Field(
+    min_synthesis_patterns: int = Field(
         default=2,
-        metadata={"description": "Minimum patterns needed for good synthesis"},
+        description="Minimum patterns required for quality synthesis",
+        ge=1
     )
     
-    # Temperature settings for different agents
-    supervisor_temperature: float = Field(
+    min_paper_relevance_score: float = Field(
         default=0.3,
-        metadata={"description": "Temperature for supervisor (lower = more deterministic)"},
+        description="Minimum relevance score for paper inclusion",
+        ge=0.0,
+        le=1.0
+    )
+
+
+class ResearchWorkflowConfiguration(BaseModel):
+    """
+    Comprehensive configuration for the HypothesisAI research workflow.
+    
+    Provides centralized configuration management with:
+    - Type safety through Pydantic models
+    - Environment variable integration
+    - Sensible defaults for all parameters
+    - Validation of configuration values
+    """
+    
+    # Model configurations
+    default_llm_model: str = Field(
+        default="gemini-2.0-flash-exp",
+        description="Default LLM model for all agents"
     )
     
-    literature_temperature: float = Field(
-        default=0.7,
-        metadata={"description": "Temperature for literature search"},
+    llm_provider: str = Field(
+        default="google",
+        description="LLM provider (google, openai, anthropic)"
     )
     
-    synthesis_temperature: float = Field(
-        default=0.5,
-        metadata={"description": "Temperature for synthesis"},
+    # Component configurations
+    temperature_settings: LLMTemperatureSettings = Field(
+        default_factory=LLMTemperatureSettings,
+        description="Temperature settings for different operations"
     )
     
-    hypothesis_temperature: float = Field(
-        default=0.8,
-        metadata={"description": "Temperature for hypothesis generation (higher = more creative)"},
+    workflow_limits: WorkflowLimits = Field(
+        default_factory=WorkflowLimits,
+        description="Workflow execution limits"
     )
     
-    validation_temperature: float = Field(
-        default=0.3,
-        metadata={"description": "Temperature for validation (lower = more strict)"},
+    quality_thresholds: QualityThresholds = Field(
+        default_factory=QualityThresholds,
+        description="Quality control thresholds"
     )
+    
+    # Legacy property accessors for backward compatibility
+    @property
+    def llm_model(self) -> str:
+        """Legacy accessor for default LLM model."""
+        return self.default_llm_model
+    
+    @property
+    def max_papers(self) -> int:
+        """Legacy accessor for max papers."""
+        return self.workflow_limits.max_papers
+    
+    @property
+    def num_hypotheses(self) -> int:
+        """Legacy accessor for number of hypotheses."""
+        return self.workflow_limits.target_hypotheses_count
+    
+    @property
+    def max_hypotheses_to_validate(self) -> int:
+        """Legacy accessor for max hypotheses to validate."""
+        return self.workflow_limits.max_hypotheses_to_validate
     
     @classmethod
     def from_runnable_config(
         cls, config: Optional[RunnableConfig] = None
-    ) -> "Configuration":
-        """Create a Configuration instance from a RunnableConfig"""
-        configurable = (
-            config["configurable"] if config and "configurable" in config else {}
-        )
+    ) -> "ResearchWorkflowConfiguration":
+        """
+        Create configuration from RunnableConfig with environment variable fallback.
         
-        # Get raw values from environment or config
-        raw_values: dict[str, Any] = {
-            name: os.environ.get(name.upper(), configurable.get(name))
-            for name in cls.model_fields.keys()
+        Args:
+            config: Optional RunnableConfig containing configurable values
+            
+        Returns:
+            ResearchWorkflowConfiguration instance with merged settings
+        """
+        configurable_values = cls._extract_configurable_values(config)
+        environment_values = cls._extract_environment_values()
+        
+        # Merge values with priority: config > environment > defaults
+        merged_values = {**environment_values, **configurable_values}
+        
+        return cls(**merged_values)
+    
+    @staticmethod
+    def _extract_configurable_values(config: Optional[RunnableConfig]) -> Dict[str, Any]:
+        """Extract values from RunnableConfig."""
+        if not config or "configurable" not in config:
+            return {}
+        return config["configurable"]
+    
+    @classmethod
+    def _extract_environment_values(cls) -> Dict[str, Any]:
+        """Extract configuration values from environment variables."""
+        env_mappings = {
+            "default_llm_model": "LLM_MODEL",
+            "llm_provider": "LLM_PROVIDER",
+            "max_papers": "MAX_PAPERS",
+            "target_hypotheses_count": "NUM_HYPOTHESES",
+            "max_workflow_iterations": "MAX_ITERATIONS",
         }
         
-        # Convert string values to appropriate types
-        for key, value in raw_values.items():
-            if value is not None and isinstance(value, str):
-                if key.endswith("_temperature") or key.endswith("_threshold"):
-                    raw_values[key] = float(value)
-                elif key.startswith("max_") or key.startswith("min_") or key.startswith("num_"):
-                    if not key.endswith("_threshold"):
-                        raw_values[key] = int(value)
+        values = {}
+        for config_key, env_var in env_mappings.items():
+            env_value = os.environ.get(env_var)
+            if env_value is not None:
+                values[config_key] = cls._convert_env_value(config_key, env_value)
         
-        # Filter out None values
-        values = {k: v for k, v in raw_values.items() if v is not None}
+        return values
+    
+    @classmethod
+    def _convert_env_value(cls, key: str, value: str) -> Any:
+        """Convert environment variable string to appropriate type."""
+        if key in ["max_papers", "target_hypotheses_count", "max_workflow_iterations"]:
+            return int(value)
+        elif key.endswith("_threshold") or key.endswith("_score"):
+            return float(value)
+        return value
+    
+    def to_runnable_config(self) -> RunnableConfig:
+        """
+        Convert configuration to RunnableConfig format for LangGraph compatibility.
         
-        return cls(**values)
+        Returns:
+            RunnableConfig with configurable parameters
+        """
+        return RunnableConfig(
+            configurable={
+                "llm_model": self.default_llm_model,
+                "llm_provider": self.llm_provider,
+                "max_papers": self.workflow_limits.max_papers,
+                "target_hypotheses_count": self.workflow_limits.target_hypotheses_count,
+                "max_workflow_iterations": self.workflow_limits.max_workflow_iterations,
+                "max_agent_retries": self.workflow_limits.max_agent_retries,
+                "supervisor_temperature": self.temperature_settings.supervisor,
+                "literature_search_temperature": self.temperature_settings.literature_search,
+                "synthesis_temperature": self.temperature_settings.synthesis,
+                "hypothesis_generation_temperature": self.temperature_settings.hypothesis_generation,
+                "validation_temperature": self.temperature_settings.validation,
+                "min_hypothesis_confidence": self.quality_thresholds.min_hypothesis_confidence,
+                "min_paper_relevance_score": self.quality_thresholds.min_paper_relevance_score,
+            }
+        )
+
+
+# Alias for backward compatibility
+Configuration = ResearchWorkflowConfiguration
