@@ -202,3 +202,64 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# HypothesisAI specific files
+docs/
+.sandbox/
+*.log
+*.sqlite
+*.db
+config/
+secrets/
+temp/
+tmp/
+test_outputs/
+migrations/versions/
+.pytest_cache/
+results/
+output/
+exports/
+
+# API keys and credentials
+api_keys.txt
+credentials.json
+.secrets
+.env.local
+.env.production
+.env.staging
+keys/
+certs/
+
+# Large model files and data
+models/
+data/large/
+*.pkl
+*.joblib
+*.model
+cache/
+.cache/
+
+# Development and testing
+test_results/
+coverage_reports/
+.coverage
+*.coverage
+htmlcov/
+benchmark_results/
+profiling/
+
+# IDE and editor files
+.idea/
+.vscode/settings.json
+*.swp
+*.swo
+*~
+.sublime-*
+
+# OS specific files
+Thumbs.db
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
