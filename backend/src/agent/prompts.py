@@ -93,33 +93,43 @@ Return a JSON object with keys: next_agent (one of ["literature_hunter","synthes
 # LITERATURE SEARCH PROMPTS
 # ============================================================================
 
-literature_search_prompt = PromptTemplate("""Generate search queries and find relevant academic papers for the research topic.
+literature_search_prompt = PromptTemplate("""Generate optimized arXiv search strategies for finding the most relevant, recent, and high-quality papers.
 
 Current Date: {current_date}
 Research Query: {query}
-Maximum Papers: {max_papers}
+Maximum Papers per Search: {max_papers}
 
-Instructions:
-- Generate 1-3 focused search queries
-- Find papers from the last 5 years preferably
-- Include diverse perspectives
-- Each paper needs title, authors, year, and abstract
+TASK: Analyze the research query and create 2-4 complementary search strategies that will comprehensively cover the research topic.
 
-Format your response as a JSON object with these keys:
-- "queries": list of search query strings
-- "rationale": explanation of search strategy
+ARXIV SEARCH STRATEGY:
+- arXiv supports boolean operators (AND, OR, NOT)
+- Field-specific searches: ti: (title), abs: (abstract), au: (author), cat: (category)
+- Use quotes for exact phrases
+- Recent papers are often more valuable (consider recency bias)
+- Popular/cited papers indicate importance
+- Combine broad and specific terms for comprehensive coverage
 
-Then provide a second JSON object with:
-- "papers": list of paper objects containing:
-  - "title": paper title
-  - "authors": list of author names
-  - "year": publication year
-  - "abstract": paper abstract (200-300 words)
-  - "doi": DOI if available
-- "total_found": total number found
-- "search_strategy": strategy used
+SEARCH STRATEGY EXAMPLES:
+For "machine learning healthcare": 
+- Strategy 1: ti:"machine learning" AND abs:healthcare AND abs:medical
+- Strategy 2: abs:"deep learning" AND (abs:diagnosis OR abs:treatment OR abs:clinical)
+- Strategy 3: cat:cs.LG AND (abs:biomedical OR abs:radiology OR abs:pathology)
 
-Focus on finding high-quality, relevant papers.""")
+For "quantum computing cryptography":
+- Strategy 1: ti:quantum AND abs:cryptography AND abs:security
+- Strategy 2: abs:"quantum algorithm" AND (abs:encryption OR abs:decryption)
+- Strategy 3: cat:quant-ph AND abs:cryptographic
+
+Format your response as a JSON object with:
+- "search_strategies": list of strategy objects, each containing:
+  - "query": the arXiv search query string (optimized for arXiv API)
+  - "focus": brief description of what this strategy targets
+  - "expected_paper_types": types of papers this query should find
+  - "priority": integer 1-3 (1=highest priority, 3=exploratory)
+- "rationale": overall explanation of the multi-strategy approach
+- "coverage_analysis": how these strategies complement each other
+
+Generate 2-4 diverse strategies that together will find the most relevant, recent, and comprehensive set of papers.""")
 
 
 # ============================================================================

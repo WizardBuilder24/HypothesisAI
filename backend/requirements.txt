@@ -46,3 +46,8 @@ prometheus-client==0.22.1
 opentelemetry-api==1.36.0
 opentelemetry-sdk==1.36.0
 opentelemetry-instrumentation-fastapi==0.57b0
+
+## Preprint API dependencies
+xmltodict==0.14.2
+ratelimit==2.2.1
+scikit-learn==1.7.1

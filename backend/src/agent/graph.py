@@ -1,21 +1,15 @@
 """
 HypothesisAI - LangGraph Research Workflow
-Minimal implementation with 5 essential nodes
+Clean, maintainable implementation with 5 essential nodes
 """
 
 import os
-from typing import Literal, List, Dict, Any, Optional
+from typing import Literal, Dict, Any, List
 from datetime import datetime, timezone
-import asyncio
-import time
 from dotenv import load_dotenv
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
+from langchain_core.messages import AIMessage
 from langgraph.graph import StateGraph, START, END
-from langgraph.types import Send
 from langchain_core.runnables import RunnableConfig
 
 from agent.state import ResearchState
@@ -28,19 +22,26 @@ from agent.prompts import (
     supervisor_routing_prompt,
 )
 from agent.tools_and_schemas import (
-    PaperList,
     SynthesisResult,
     HypothesisList,
     ValidationResult,
     SupervisorDecision,
+    SearchStrategies,
 )
 from agent.utils import (
-    deduplicate_papers,
-    score_paper_relevance,
     format_papers_for_synthesis,
     extract_paper_ids,
     analyze_state,
     format_synthesis_for_prompt,
+)
+from agent.workflow_utils import (
+    WorkflowLogger,
+    LLMProvider,
+    PaperSearcher,
+    PaperProcessor,
+    RateLimiter,
+    StateValidator,
+    MessageBuilder,
 )
 
 load_dotenv()
@@ -51,152 +52,245 @@ load_dotenv()
 
 def supervisor(state: ResearchState, config: RunnableConfig) -> Dict[str, Any]:
     """
-    Supervisor node that makes all routing decisions.
-    This is the brain of the system that determines what happens next.
+    Supervisor node that makes intelligent routing decisions for the research workflow.
+    Analyzes current state and determines the next appropriate action.
     """
     configurable = ResearchWorkflowConfiguration.from_runnable_config(config)
     
-    # Get LLM based on configuration
-    llm = _get_llm(configurable, temperature=configurable.temperature_settings.supervisor)
+    # Get LLM for decision making
+    llm = LLMProvider.create_llm(
+        configurable, 
+        temperature=configurable.temperature_settings.supervisor
+    )
     
-    # Analyze current state to make routing decision
+    # Analyze current workflow state
     current_status = analyze_state(state)
     
-    # Format routing prompt
-    formatted_prompt = supervisor_routing_prompt.format(
-        query=state.get("query", ""),
-        papers_count=len(state.get("papers", [])),
-        has_synthesis=state.get("synthesis") is not None,
-        has_hypotheses=len(state.get("hypotheses", [])) > 0,
-        has_validation=state.get("validation_results") is not None,
-        error_count=len(state.get("errors", [])),
-        iteration=state.get("iteration", 0),
-        status_summary=current_status,
-        current_data=state,
-    )
+    # Build routing decision prompt
+    routing_prompt = _build_supervisor_prompt(state, current_status)
     
     # Get structured decision from LLM
     structured_llm = llm.with_structured_output(SupervisorDecision)
-    decision = structured_llm.invoke(formatted_prompt)
+    decision = structured_llm.invoke(routing_prompt)
     
-    # Rate limiting: small delay to respect Gemini quota (30 req/min = 2 sec between calls)
-    time.sleep(2.5)
+    # Apply rate limiting for API respect
+    RateLimiter.apply_rate_limit()
 
-    # Record stage information for debugging/visibility
-    try:
-        if "stages" not in state:
-            state["stages"] = []
-        state["stages"].append({
-            "agent": "supervisor",
-            "prompt": formatted_prompt,
-            "response": decision.model_dump() if hasattr(decision, 'model_dump') else str(decision),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
-    except Exception:
-        # Non-critical: don't fail workflow if recording stages fails
-        pass
+    # Record decision for transparency
+    WorkflowLogger.record_stage(
+        state=state,
+        agent_name="supervisor",
+        prompt=routing_prompt,
+        response=decision
+    )
     
-    # Update state with supervisor decision
+    # Return updated state with supervisor decision
+    return _build_supervisor_state_update(state, decision)
+
+
+def _build_supervisor_prompt(state: ResearchState, current_status: str) -> str:
+    """Build the supervisor routing prompt with current state information."""
+    return supervisor_routing_prompt.format(
+        query=StateValidator.get_query(state),
+        papers_count=len(StateValidator.get_papers(state)),
+        has_synthesis=StateValidator.get_synthesis(state) is not None,
+        has_hypotheses=len(StateValidator.get_hypotheses(state)) > 0,
+        has_validation=len(StateValidator.get_validation_results(state)) > 0,
+        error_count=len(StateValidator.get_errors(state)),
+        iteration=StateValidator.get_iteration(state),
+        status_summary=current_status,
+        current_data=state,
+    )
+
+
+def _build_supervisor_state_update(
+    state: ResearchState, 
+    decision: SupervisorDecision
+) -> Dict[str, Any]:
+    """Build state update dictionary for supervisor decision."""
     return {
         "next_agent": decision.next_agent,
         "should_continue": decision.should_continue,
         "supervisor_reasoning": decision.reasoning,
-        "iteration": state.get("iteration", 0) + 1,
+        "iteration": StateValidator.get_iteration(state) + 1,
         "last_updated": datetime.now(timezone.utc).isoformat(),
-        "stages": state.get("stages", []),
+        "stages": StateValidator.get_stages(state),
     }
 
 
 def route_supervisor(state: ResearchState) -> Literal["literature_hunter", "synthesizer", "hypothesis_generator", "validator", "end"]:
     """
-    Routing function for supervisor decisions.
-    Returns the next node to execute based on supervisor's decision.
+    Route supervisor decisions to appropriate workflow nodes.
+    Returns the next node to execute based on supervisor's analysis.
     """
     next_agent = state.get("next_agent")
     should_continue = state.get("should_continue", True)
     
-    # Check if we should end
+    # End workflow if determined by supervisor
     if not should_continue or next_agent == "end":
         return "end"
     
-    # Route to the appropriate agent
-    if next_agent == "literature_hunter":
-        return "literature_hunter"
-    elif next_agent == "synthesizer":
-        return "synthesizer"
-    elif next_agent == "hypothesis_generator":
-        return "hypothesis_generator"
-    elif next_agent == "validator":
-        return "validator"
-    else:
-        # Default to end if unknown
-        return "end"
-
-
+    # Route to valid agents or default to end
+    valid_agents = {
+        "literature_hunter", "synthesizer", 
+        "hypothesis_generator", "validator"
+    }
+    
+    return next_agent if next_agent in valid_agents else "end"
 # ============================================================================
 # LITERATURE HUNTER NODE
 # ============================================================================
 
 def literature_hunter(state: ResearchState, config: RunnableConfig) -> Dict[str, Any]:
     """
-    Literature Hunter node that searches for relevant academic papers.
-    Uses LLM to generate search queries and mock search for now.
+    Literature Hunter node that searches for relevant academic papers using multiple
+    optimized search strategies. Consolidates and ranks results for best coverage.
     """
     configurable = ResearchWorkflowConfiguration.from_runnable_config(config)
     
-    # Get LLM
-    llm = _get_llm(configurable, temperature=configurable.temperature_settings.literature_search)
+    # Generate search strategies using LLM
+    search_strategies, search_prompt = _generate_search_strategies(state, configurable)
     
-    # Format search prompt
-    query = state.get("query", "")
-    max_papers = state.get("max_papers", 20)
+    # Execute multiple search strategies
+    search_results = _execute_search_strategies(search_strategies, state)
     
-    formatted_prompt = literature_search_prompt.format(
+    # Process and consolidate results
+    final_papers = _consolidate_search_results(search_results, state)
+    
+    # Record successful search completion with actual prompt
+    WorkflowLogger.record_stage(
+        state=state,
+        agent_name="literature_hunter",
+        prompt=search_prompt,
+        response=search_strategies,
+        additional_data={
+            "strategies_used": len(search_strategies.search_strategies),
+            "papers_found": len(final_papers)
+        }
+    )
+    
+    return _build_literature_search_state_update(state, final_papers, search_results)
+
+
+def _generate_search_strategies(
+    state: ResearchState, 
+    configurable: ResearchWorkflowConfiguration
+) -> tuple[SearchStrategies, str]:
+    """Generate optimized search strategies using LLM and return both result and prompt."""
+    llm = LLMProvider.create_llm(
+        configurable, 
+        temperature=configurable.temperature_settings.literature_search
+    )
+    
+    query = StateValidator.get_query(state)
+    max_papers = StateValidator.get_max_papers(state)
+    max_papers_per_search = max(5, max_papers // 3)
+    
+    search_prompt = literature_search_prompt.format(
         query=query,
-        max_papers=max_papers,
+        max_papers=max_papers_per_search,
         current_data=state,
     )
     
-    # Get structured paper list from LLM (mock search for now)
-    structured_llm = llm.with_structured_output(PaperList)
-    paper_results = structured_llm.invoke(formatted_prompt)
+    structured_llm = llm.with_structured_output(SearchStrategies)
+    strategies = structured_llm.invoke(search_prompt)
     
-    # Rate limiting delay
-    time.sleep(2.5)
+    RateLimiter.apply_rate_limit()
+    return strategies, search_prompt
 
-    # Record stage information
-    try:
-        if "stages" not in state:
-            state["stages"] = []
-        state["stages"].append({
-            "agent": "literature_hunter",
-            "prompt": formatted_prompt,
-            "response": paper_results.model_dump() if hasattr(paper_results, 'model_dump') else str(paper_results),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
-    except Exception:
-        pass
+
+def _execute_search_strategies(
+    strategies: SearchStrategies, 
+    state: ResearchState
+) -> Dict[str, Any]:
+    """Execute multiple search strategies and collect results."""
+    max_papers = StateValidator.get_max_papers(state)
+    max_papers_per_search = max(5, max_papers // 3)
     
-    # Process papers
-    papers = []
-    for paper in paper_results.papers:
-        # Score relevance
-        paper.relevance_score = score_paper_relevance(paper.title, paper.abstract, query)
-        papers.append(paper.dict())
+    all_papers = []
+    search_queries_used = []
+    papers_per_strategy = {}
     
-    # Deduplicate and sort by relevance
-    unique_papers = deduplicate_papers(papers)
-    sorted_papers = sorted(unique_papers, key=lambda p: p.get("relevance_score", 0), reverse=True)
+    # Sort strategies by priority (1 = highest priority first)
+    sorted_strategies = sorted(strategies.search_strategies, key=lambda s: s.priority)
     
-    # Take top papers up to max_papers limit
-    final_papers = sorted_papers[:max_papers]
+    for i, strategy in enumerate(sorted_strategies):
+        try:
+            print(f"Executing search strategy {i+1}/{len(sorted_strategies)}: {strategy.focus}")
+            
+            # Perform search for this strategy
+            strategy_papers = PaperSearcher.search_papers_sync(
+                strategy.query, 
+                max_papers_per_search
+            )
+            
+            papers_per_strategy[f"strategy_{i+1}"] = len(strategy_papers)
+            all_papers.extend(strategy_papers)
+            search_queries_used.append(strategy.query)
+            
+            # Respectful delay between searches
+            if i < len(sorted_strategies) - 1:
+                RateLimiter.apply_search_delay()
+                
+        except Exception as e:
+            print(f"Error in search strategy {i+1}: {e}")
+            papers_per_strategy[f"strategy_{i+1}"] = 0
+            continue
+    
+    return {
+        "all_papers": all_papers,
+        "search_queries_used": search_queries_used,
+        "papers_per_strategy": papers_per_strategy,
+        "strategies_used": len(sorted_strategies)
+    }
+
+
+def _consolidate_search_results(
+    search_results: Dict[str, Any], 
+    state: ResearchState
+) -> List[Dict[str, Any]]:
+    """Consolidate, deduplicate, and rank search results."""
+    all_papers = search_results["all_papers"]
+    max_papers = StateValidator.get_max_papers(state)
+    
+    # Remove duplicates
+    unique_papers = PaperProcessor.deduplicate_papers(all_papers)
+    
+    print(f"Found {len(all_papers)} total papers, {len(unique_papers)} unique papers")
+    
+    # Convert to dict format and rank
+    paper_dicts = PaperProcessor.convert_papers_to_dict(unique_papers)
+    ranked_papers = PaperProcessor.rank_papers(paper_dicts)
+    
+    # Return top papers up to limit
+    return ranked_papers[:max_papers]
+
+
+def _build_literature_search_state_update(
+    state: ResearchState,
+    final_papers: List[Dict[str, Any]],
+    search_results: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Build state update for completed literature search."""
+    strategy_summary = f"{search_results['strategies_used']} complementary search approaches"
+    
+    message = MessageBuilder.build_search_complete_message(
+        paper_count=len(final_papers),
+        strategy_count=search_results["strategies_used"],
+        strategy_summary=strategy_summary
+    )
     
     return {
         "papers": final_papers,
         "papers_found_count": len(final_papers),
         "search_completed": True,
-        "messages": [AIMessage(content=f"Found {len(final_papers)} relevant papers for: {query}")],
-        "stages": state.get("stages", []),
+        "search_queries": search_results["search_queries_used"],
+        "search_strategies_used": search_results["strategies_used"],
+        "papers_per_strategy": search_results["papers_per_strategy"],
+        "total_papers_before_dedup": len(search_results["all_papers"]),
+        "duplicate_papers_removed": len(search_results["all_papers"]) - len(final_papers),
+        "messages": [message],
+        "stages": StateValidator.get_stages(state),
     }
 
 
@@ -207,56 +301,81 @@ def literature_hunter(state: ResearchState, config: RunnableConfig) -> Dict[str,
 def synthesizer(state: ResearchState, config: RunnableConfig) -> Dict[str, Any]:
     """
     Knowledge Synthesizer node that analyzes papers to identify patterns and gaps.
+    Provides comprehensive synthesis of the research landscape.
     """
     configurable = ResearchWorkflowConfiguration.from_runnable_config(config)
     
-    # Get LLM
-    llm = _get_llm(configurable, temperature=configurable.temperature_settings.synthesis)
-    
-    # Prepare papers for synthesis
-    papers = state.get("papers", [])
+    # Validate we have papers to synthesize
+    papers = StateValidator.get_papers(state)
     if not papers:
-        return {
-            "synthesis": None,
-            "errors": state.get("errors", []) + ["No papers available for synthesis"],
-        }
+        return _build_synthesis_error_state(state, "No papers available for synthesis")
     
-    # Format synthesis prompt
+    # Generate synthesis using LLM
+    synthesis_result, synthesis_prompt = _generate_synthesis(state, configurable, papers)
+    
+    # Record synthesis completion with actual prompt
+    WorkflowLogger.record_stage(
+        state=state,
+        agent_name="synthesizer",
+        prompt=synthesis_prompt,
+        response=synthesis_result,
+        additional_data={"papers_analyzed": len(papers)}
+    )
+    
+    return _build_synthesis_state_update(state, synthesis_result)
+
+
+def _generate_synthesis(
+    state: ResearchState,
+    configurable: ResearchWorkflowConfiguration,
+    papers: List[Dict[str, Any]]
+) -> tuple[SynthesisResult, str]:
+    """Generate synthesis using LLM analysis of papers and return both result and prompt."""
+    llm = LLMProvider.create_llm(
+        configurable, 
+        temperature=configurable.temperature_settings.synthesis
+    )
+    
     papers_summary = format_papers_for_synthesis(papers)
-    formatted_prompt = synthesis_prompt.format(
+    synthesis_prompt_text = synthesis_prompt.format(
         num_papers=len(papers),
         papers_summary=papers_summary,
         current_data=state,
     )
     
-    # Get structured synthesis from LLM
     structured_llm = llm.with_structured_output(SynthesisResult)
-    synthesis = structured_llm.invoke(formatted_prompt)
+    synthesis = structured_llm.invoke(synthesis_prompt_text)
     
-    # Rate limiting delay
-    time.sleep(2.5)
+    RateLimiter.apply_rate_limit()
+    return synthesis, synthesis_prompt_text
 
-    # Record stage
-    try:
-        if "stages" not in state:
-            state["stages"] = []
-        state["stages"].append({
-            "agent": "synthesizer",
-            "prompt": formatted_prompt,
-            "response": synthesis.model_dump() if hasattr(synthesis, 'model_dump') else str(synthesis),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
-    except Exception:
-        pass
-    
-    # Store synthesis in state
+
+def _build_synthesis_error_state(state: ResearchState, error_message: str) -> Dict[str, Any]:
+    """Build error state for synthesis failures."""
     return {
-        "synthesis": synthesis.model_dump(),
+        "synthesis": None,
+        "errors": StateValidator.get_errors(state) + [error_message],
+        "stages": StateValidator.get_stages(state),
+    }
+
+
+def _build_synthesis_state_update(
+    state: ResearchState, 
+    synthesis: SynthesisResult
+) -> Dict[str, Any]:
+    """Build state update for completed synthesis."""
+    synthesis_dict = synthesis.model_dump()
+    
+    message = MessageBuilder.build_synthesis_complete_message(
+        pattern_count=len(synthesis.patterns),
+        gap_count=len(synthesis.research_gaps)
+    )
+    
+    return {
+        "synthesis": synthesis_dict,
         "synthesis_completed": True,
-        "messages": state.get("messages", []) + [
-            AIMessage(content=f"Identified {len(synthesis.patterns)} patterns and {len(synthesis.research_gaps)} research gaps")
-        ],
-        "stages": state.get("stages", []),
+        "messages": StateValidator.get_messages(state) + [message],
+        "stages": StateValidator.get_stages(state),
     }
 
 
@@ -266,66 +385,100 @@ def synthesizer(state: ResearchState, config: RunnableConfig) -> Dict[str, Any]:
 
 def hypothesis_generator(state: ResearchState, config: RunnableConfig) -> Dict[str, Any]:
     """
-    Hypothesis Generator node that creates novel research hypotheses.
+    Hypothesis Generator node that creates novel, testable research hypotheses
+    based on synthesis results.
     """
     configurable = ResearchWorkflowConfiguration.from_runnable_config(config)
     
-    # Get LLM with higher temperature for creativity
-    llm = _get_llm(configurable, temperature=configurable.temperature_settings.hypothesis_generation)
-    
-    # Get synthesis
-    synthesis = state.get("synthesis")
+    # Validate we have synthesis to work with
+    synthesis = StateValidator.get_synthesis(state)
     if not synthesis:
-        return {
-            "hypotheses": [],
-            "errors": state.get("errors", []) + ["No synthesis available for hypothesis generation"],
-        }
+        return _build_hypothesis_error_state(state, "No synthesis available for hypothesis generation")
     
-    # Format hypothesis generation prompt
+    # Generate hypotheses using LLM
+    hypotheses_result, hypothesis_prompt = _generate_hypotheses(state, configurable, synthesis)
+    
+    # Process and rank hypotheses
+    processed_hypotheses = _process_hypotheses(hypotheses_result, synthesis)
+    
+    # Record hypothesis generation completion with actual prompt
+    WorkflowLogger.record_stage(
+        state=state,
+        agent_name="hypothesis_generator",
+        prompt=hypothesis_prompt,
+        response=hypotheses_result,
+        additional_data={"hypotheses_generated": len(processed_hypotheses)}
+    )
+    
+    return _build_hypothesis_state_update(state, processed_hypotheses)
+
+
+def _generate_hypotheses(
+    state: ResearchState,
+    configurable: ResearchWorkflowConfiguration,
+    synthesis: Dict[str, Any]
+) -> tuple[HypothesisList, str]:
+    """Generate hypotheses using LLM with higher creativity temperature and return both result and prompt."""
+    llm = LLMProvider.create_llm(
+        configurable, 
+        temperature=configurable.temperature_settings.hypothesis_generation
+    )
+    
     synthesis_text = format_synthesis_for_prompt(synthesis)
-    formatted_prompt = hypothesis_generation_prompt.format(
+    hypothesis_prompt_text = hypothesis_generation_prompt.format(
         synthesis=synthesis_text,
         num_hypotheses=configurable.num_hypotheses,
         current_data=state,
     )
     
-    # Get structured hypotheses from LLM
     structured_llm = llm.with_structured_output(HypothesisList)
-    hypotheses_result = structured_llm.invoke(formatted_prompt)
+    hypotheses = structured_llm.invoke(hypothesis_prompt_text)
     
-    # Rate limiting delay
-    time.sleep(2.5)
+    RateLimiter.apply_rate_limit()
+    return hypotheses, hypothesis_prompt_text
 
-    # Record stage
-    try:
-        if "stages" not in state:
-            state["stages"] = []
-        state["stages"].append({
-            "agent": "hypothesis_generator",
-            "prompt": formatted_prompt,
-            "response": hypotheses_result.model_dump() if hasattr(hypotheses_result, 'model_dump') else str(hypotheses_result),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
-    except Exception:
-        pass
+
+def _process_hypotheses(
+    hypotheses_result: HypothesisList, 
+    synthesis: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """Process hypotheses by adding supporting paper references and ranking."""
+    processed_hypotheses = []
     
-    # Process hypotheses
-    hypotheses = []
     for hypothesis in hypotheses_result.hypotheses:
-        # Add paper IDs from synthesis that are relevant to this specific hypothesis
+        # Add paper IDs from synthesis that support this hypothesis
         hypothesis.supporting_papers = extract_paper_ids(synthesis, hypothesis.content)
-        hypotheses.append(hypothesis.dict())
+        processed_hypotheses.append(hypothesis.dict())
+    
+    # Sort by confidence score (highest first)
+    return sorted(
+        processed_hypotheses, 
+        key=lambda h: h.get("confidence_score", 0), 
+        reverse=True
+    )
 
-    # Sort by confidence score
-    sorted_hypotheses = sorted(hypotheses, key=lambda h: h.get("confidence_score", 0), reverse=True)
+
+def _build_hypothesis_error_state(state: ResearchState, error_message: str) -> Dict[str, Any]:
+    """Build error state for hypothesis generation failures."""
+    return {
+        "hypotheses": [],
+        "errors": StateValidator.get_errors(state) + [error_message],
+        "stages": StateValidator.get_stages(state),
+    }
+
+
+def _build_hypothesis_state_update(
+    state: ResearchState, 
+    hypotheses: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """Build state update for completed hypothesis generation."""
+    message = MessageBuilder.build_hypothesis_complete_message(len(hypotheses))
     
     return {
-        "hypotheses": sorted_hypotheses,
-        "hypotheses_generated": len(sorted_hypotheses),
-        "messages": state.get("messages", []) + [
-            AIMessage(content=f"Generated {len(sorted_hypotheses)} research hypotheses")
-        ],
-        "stages": state.get("stages", []),
+        "hypotheses": hypotheses,
+        "hypotheses_generated": len(hypotheses),
+        "messages": StateValidator.get_messages(state) + [message],
+        "stages": StateValidator.get_stages(state),
     }
 
 
@@ -336,27 +489,52 @@ def hypothesis_generator(state: ResearchState, config: RunnableConfig) -> Dict[s
 def validator(state: ResearchState, config: RunnableConfig) -> Dict[str, Any]:
     """
     Validation Agent node that validates hypotheses and completes the workflow.
+    Provides rigorous assessment of hypothesis validity and feasibility.
     """
     configurable = ResearchWorkflowConfiguration.from_runnable_config(config)
     
-    # Get LLM
-    llm = _get_llm(configurable, temperature=configurable.temperature_settings.validation)
-    
-    # Get hypotheses to validate
-    hypotheses = state.get("hypotheses", [])
+    # Validate we have hypotheses to validate
+    hypotheses = StateValidator.get_hypotheses(state)
     if not hypotheses:
-        return {
-            "validation_results": [],
-            "errors": state.get("errors", []) + ["No hypotheses to validate"],
-            "workflow_complete": True,
+        return _build_validation_error_state(state, "No hypotheses to validate")
+    
+    # Validate hypotheses up to configured limit
+    validation_results, validation_prompts = _validate_hypotheses(
+        state, configurable, hypotheses[:configurable.max_hypotheses_to_validate]
+    )
+    
+    # Record validation completion with actual prompts used
+    WorkflowLogger.record_stage(
+        state=state,
+        agent_name="validator",
+        prompt=validation_prompts,  # List of all validation prompts used
+        response=f"Validated {len(validation_results)} hypotheses",
+        additional_data={
+            "hypotheses_validated": len(validation_results),
+            "valid_count": sum(1 for v in validation_results if v.get("is_valid"))
         }
+    )
+    
+    return _build_validation_state_update(state, validation_results)
+
+
+def _validate_hypotheses(
+    state: ResearchState,
+    configurable: ResearchWorkflowConfiguration,
+    hypotheses_to_validate: List[Dict[str, Any]]
+) -> tuple[List[Dict[str, Any]], List[str]]:
+    """Validate each hypothesis using LLM assessment and return results with prompts."""
+    llm = LLMProvider.create_llm(
+        configurable, 
+        temperature=configurable.temperature_settings.validation
+    )
     
     validation_results = []
+    validation_prompts = []
     
-    # Validate each hypothesis (in practice, you might batch this)
-    for hypothesis in hypotheses[:configurable.max_hypotheses_to_validate]:
-        # Format validation prompt
-        formatted_prompt = validation_prompt.format(
+    for hypothesis in hypotheses_to_validate:
+        # Generate validation prompt for this hypothesis
+        validation_prompt_text = validation_prompt.format(
             hypothesis=hypothesis.get("content", ""),
             confidence_score=hypothesis.get("confidence_score", 0),
             reasoning=hypothesis.get("reasoning", ""),
@@ -364,101 +542,72 @@ def validator(state: ResearchState, config: RunnableConfig) -> Dict[str, Any]:
             current_data=state,
         )
         
-        # Get structured validation
+        validation_prompts.append(validation_prompt_text)
+        
+        # Get structured validation assessment
         structured_llm = llm.with_structured_output(ValidationResult)
-        validation = structured_llm.invoke(formatted_prompt)
+        validation = structured_llm.invoke(validation_prompt_text)
         
-        # Rate limiting delay between hypothesis validations
-        time.sleep(2.5)
+        # Apply rate limiting between validations
+        RateLimiter.apply_rate_limit()
 
-        # Record stage per hypothesis validation
-        try:
-            if "stages" not in state:
-                state["stages"] = []
-            state["stages"].append({
-                "agent": "validator",
-                "prompt": formatted_prompt,
-                "response": validation.model_dump() if hasattr(validation, 'model_dump') else str(validation),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "hypothesis_id": hypothesis.get("id"),
-            })
-        except Exception:
-            pass
-        
-        # Add hypothesis ID to validation
+        # Build validation result with hypothesis reference
         validation_dict = validation.model_dump()
         validation_dict["hypothesis_id"] = hypothesis.get("id")
         validation_results.append(validation_dict)
     
-    # Count valid hypotheses
+    return validation_results, validation_prompts
+
+
+def _build_validation_error_state(state: ResearchState, error_message: str) -> Dict[str, Any]:
+    """Build error state for validation failures."""
+    return {
+        "validation_results": [],
+        "errors": StateValidator.get_errors(state) + [error_message],
+        "workflow_complete": True,
+        "stages": StateValidator.get_stages(state),
+    }
+
+
+def _build_validation_state_update(
+    state: ResearchState, 
+    validation_results: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """Build state update for completed validation."""
     valid_count = sum(1 for v in validation_results if v.get("is_valid"))
+    
+    message = MessageBuilder.build_validation_complete_message(
+        valid_count=valid_count,
+        total_count=len(validation_results)
+    )
     
     return {
         "validation_results": validation_results,
         "valid_hypotheses_count": valid_count,
         "workflow_complete": True,
-        "messages": state.get("messages", []) + [
-            AIMessage(content=f"Validation complete: {valid_count}/{len(validation_results)} hypotheses validated")
-        ],
-        "stages": state.get("stages", []),
+        "messages": StateValidator.get_messages(state) + [message],
+        "stages": StateValidator.get_stages(state),
     }
 
 
 # ============================================================================
-# HELPER FUNCTIONS
+# WORKFLOW GRAPH CONSTRUCTION
 # ============================================================================
 
-def _get_llm(configurable: ResearchWorkflowConfiguration, temperature: float = 0.7):
-    """
-    Get the appropriate LLM based on configuration.
-    """
-    provider = configurable.llm_provider.lower()
-    
-    if provider == "openai":
-        return ChatOpenAI(
-            model=configurable.llm_model,
-            temperature=temperature,
-            api_key=os.getenv("OPENAI_API_KEY"),
-        )
-    elif provider == "anthropic":
-        return ChatAnthropic(
-            model=configurable.llm_model,
-            temperature=temperature,
-            api_key=os.getenv("ANTHROPIC_API_KEY"),
-        )
-    elif provider == "google":
-        return ChatGoogleGenerativeAI(
-            model=configurable.llm_model,
-            temperature=temperature,
-            api_key=os.getenv("GEMINI_API_KEY"),
-        )
-    else:
-        # Default to Google
-        return ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash-lite",
-            temperature=temperature,
-            api_key=os.getenv("GEMINI_API_KEY"),
-        )
-
-
-# ============================================================================
-# BUILD THE GRAPH
-# ============================================================================
-
-# Create the graph
+# Create the graph with proper configuration
 graph_builder = StateGraph(ResearchState, config_schema=ResearchWorkflowConfiguration)
 
-# Add nodes
+# Add all workflow nodes
 graph_builder.add_node("supervisor", supervisor)
 graph_builder.add_node("literature_hunter", literature_hunter)
 graph_builder.add_node("synthesizer", synthesizer)
 graph_builder.add_node("hypothesis_generator", hypothesis_generator)
 graph_builder.add_node("validator", validator)
 
-# Set entry point
+# Set entry point to supervisor
 graph_builder.add_edge(START, "supervisor")
 
-# Add conditional routing from supervisor
+# Add conditional routing from supervisor based on decisions
 graph_builder.add_conditional_edges(
     "supervisor",
     route_supervisor,
@@ -471,11 +620,11 @@ graph_builder.add_conditional_edges(
     }
 )
 
-# All agents return to supervisor
+# All agents return control to supervisor for next decision
 graph_builder.add_edge("literature_hunter", "supervisor")
 graph_builder.add_edge("synthesizer", "supervisor")
 graph_builder.add_edge("hypothesis_generator", "supervisor")
 graph_builder.add_edge("validator", "supervisor")
 
-# Compile the graph
+# Compile the graph for execution
 graph = graph_builder.compile(name="hypothesis-ai-research")

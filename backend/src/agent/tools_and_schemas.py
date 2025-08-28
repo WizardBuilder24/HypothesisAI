@@ -48,14 +48,78 @@ class SearchQueryList(BaseModel):
     )
 
 
+class SearchStrategy(BaseModel):
+    """Individual arXiv search strategy"""
+    query: str = Field(
+        description="The arXiv search query string (optimized for arXiv API)"
+    )
+    focus: str = Field(
+        description="Brief description of what this strategy targets"
+    )
+    expected_paper_types: str = Field(
+        description="Types of papers this query should find"
+    )
+    priority: int = Field(
+        description="Priority level 1-3 (1=highest priority, 3=exploratory)",
+        ge=1, le=3
+    )
+
+
+class SearchStrategies(BaseModel):
+    """Multiple search strategies for comprehensive literature search"""
+    search_strategies: List[SearchStrategy] = Field(
+        description="List of 2-4 complementary search strategies"
+    )
+    rationale: str = Field(
+        description="Overall explanation of the multi-strategy approach"
+    )
+    coverage_analysis: str = Field(
+        description="How these strategies complement each other"
+    )
+
+
+class SearchKeywords(BaseModel):
+    """Keywords for arXiv search (deprecated - use SearchStrategies)"""
+    keywords: List[str] = Field(
+        description="List of 3-5 focused search keywords/phrases"
+    )
+    rationale: str = Field(
+        description="Explanation of keyword selection strategy"
+    )
+    search_strategy: str = Field(
+        description="Brief description of how keywords will be used"
+    )
+
+
 class Paper(BaseModel):
     """Research paper schema"""
     title: str = Field(description="Paper title")
-    authors: List[str] = Field(description="List of authors")
-    year: Optional[int] = Field(description="Publication year")
     abstract: str = Field(description="Paper abstract")
+    authors: List[str] = Field(description="List of authors")
+    date_published: str = Field(description="Publication date (ISO format)")
+    source: str = Field(description="Source (arxiv, biorxiv, etc.)")
+    url: str = Field(description="Paper URL")
+    categories: List[str] = Field(default=[], description="Categories/subjects")
     doi: Optional[str] = Field(default=None, description="DOI")
-    relevance_score: float = Field(default=0.0, description="Relevance to query (0-1)")
+    citations: int = Field(default=0, description="Citation count")
+    version: int = Field(default=1, description="Version number")
+    pdf_url: Optional[str] = Field(default=None, description="PDF URL")
+    relevance_score: float = Field(default=0.0, description="Relevance score (0-1)")
+    quality_score: float = Field(default=0.0, description="Quality score (0-1)")
+    metadata: Dict[str, Any] = Field(default={}, description="Additional metadata")
+    
+    # Legacy compatibility
+    @property
+    def year(self) -> Optional[int]:
+        """Extract year from date_published for backward compatibility"""
+        try:
+            from datetime import datetime
+            if isinstance(self.date_published, str):
+                dt = datetime.fromisoformat(self.date_published.replace('Z', '+00:00'))
+                return dt.year
+            return None
+        except:
+            return None
 
 
 class PaperList(BaseModel):
