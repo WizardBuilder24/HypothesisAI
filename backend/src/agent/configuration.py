@@ -1,6 +1,6 @@
-"""
-Configuration management for HypothesisAI research workflow.
-Provides centralized configuration with environment variable support and type safety.
+"""Configuration management for HypothesisAI research workflow.
+
+Centralized configuration with environment variable support and type safety.
 """
 
 import os
@@ -12,150 +12,45 @@ from langchain_core.runnables import RunnableConfig
 class LLMTemperatureSettings(BaseModel):
     """Temperature settings for different LLM operations."""
     
-    supervisor: float = Field(
-        default=0.3,
-        description="Low temperature for deterministic routing decisions",
-        ge=0.0,
-        le=2.0
-    )
-    
-    literature_search: float = Field(
-        default=0.7,
-        description="Medium temperature for diverse search strategies",
-        ge=0.0,
-        le=2.0
-    )
-    
-    synthesis: float = Field(
-        default=0.5,
-        description="Balanced temperature for analytical synthesis",
-        ge=0.0,
-        le=2.0
-    )
-    
-    hypothesis_generation: float = Field(
-        default=0.8,
-        description="High temperature for creative hypothesis generation",
-        ge=0.0,
-        le=2.0
-    )
-    
-    validation: float = Field(
-        default=0.3,
-        description="Low temperature for strict validation",
-        ge=0.0,
-        le=2.0
-    )
+    supervisor: float = Field(default=0.3, ge=0.0, le=2.0)
+    literature_search: float = Field(default=0.7, ge=0.0, le=2.0)
+    synthesis: float = Field(default=0.5, ge=0.0, le=2.0)
+    hypothesis_generation: float = Field(default=0.8, ge=0.0, le=2.0)
+    validation: float = Field(default=0.3, ge=0.0, le=2.0)
 
 
 class WorkflowLimits(BaseModel):
     """Workflow execution limits and thresholds."""
     
-    max_papers: int = Field(
-        default=5,
-        description="Maximum papers to analyze per workflow",
-        ge=1,
-        le=100
-    )
-    
-    min_papers_for_synthesis: int = Field(
-        default=3,
-        description="Minimum papers required for synthesis",
-        ge=1
-    )
-    
-    target_hypotheses_count: int = Field(
-        default=2,
-        description="Target number of hypotheses to generate",
-        ge=1,
-        le=10
-    )
-    
-    max_workflow_iterations: int = Field(
-        default=5,
-        description="Maximum supervisor iterations before termination",
-        ge=1,
-        le=50
-    )
-    
-    max_agent_retries: int = Field(
-        default=2,
-        description="Maximum retry attempts per agent on failure",
-        ge=0,
-        le=10
-    )
-    
-    max_hypotheses_to_validate: int = Field(
-        default=2,
-        description="Maximum hypotheses to validate per workflow",
-        ge=1,
-        le=20
-    )
+    max_papers: int = Field(default=5, ge=1, le=100)
+    min_papers_for_synthesis: int = Field(default=3, ge=1)
+    target_hypotheses_count: int = Field(default=2, ge=1, le=10)
+    max_workflow_iterations: int = Field(default=5, ge=1, le=50)
+    max_agent_retries: int = Field(default=2, ge=0, le=10)
+    max_hypotheses_to_validate: int = Field(default=2, ge=1, le=20)
 
 
 class QualityThresholds(BaseModel):
     """Quality control thresholds for filtering and validation."""
     
-    min_hypothesis_confidence: float = Field(
-        default=0.5,
-        description="Minimum confidence score for hypothesis acceptance",
-        ge=0.0,
-        le=1.0
-    )
-    
-    min_synthesis_patterns: int = Field(
-        default=2,
-        description="Minimum patterns required for quality synthesis",
-        ge=1
-    )
-    
-    min_paper_relevance_score: float = Field(
-        default=0.3,
-        description="Minimum relevance score for paper inclusion",
-        ge=0.0,
-        le=1.0
-    )
+    min_hypothesis_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    min_synthesis_patterns: int = Field(default=2, ge=1)
+    min_paper_relevance_score: float = Field(default=0.3, ge=0.0, le=1.0)
 
 
 class ResearchWorkflowConfiguration(BaseModel):
-    """
-    Comprehensive configuration for the HypothesisAI research workflow.
-    
-    Provides centralized configuration management with:
-    - Type safety through Pydantic models
-    - Environment variable integration
-    - Sensible defaults for all parameters
-    - Validation of configuration values
-    """
+    """Comprehensive configuration for the HypothesisAI research workflow."""
     
     # Model configurations
-    default_llm_model: str = Field(
-    default="gemini-2.0-flash-lite",
-        description="Default LLM model for all agents"
-    )
-    
-    llm_provider: str = Field(
-        default="google",
-        description="LLM provider (google, openai, anthropic)"
-    )
+    default_llm_model: str = Field(default="gemini-2.0-flash-lite")
+    llm_provider: str = Field(default="google")
     
     # Component configurations
-    temperature_settings: LLMTemperatureSettings = Field(
-        default_factory=LLMTemperatureSettings,
-        description="Temperature settings for different operations"
-    )
+    temperature_settings: LLMTemperatureSettings = Field(default_factory=LLMTemperatureSettings)
+    workflow_limits: WorkflowLimits = Field(default_factory=WorkflowLimits)
+    quality_thresholds: QualityThresholds = Field(default_factory=QualityThresholds)
     
-    workflow_limits: WorkflowLimits = Field(
-        default_factory=WorkflowLimits,
-        description="Workflow execution limits"
-    )
-    
-    quality_thresholds: QualityThresholds = Field(
-        default_factory=QualityThresholds,
-        description="Quality control thresholds"
-    )
-    
-    # Legacy property accessors for backward compatibility
+    # Legacy property accessors
     @property
     def llm_model(self) -> str:
         """Legacy accessor for default LLM model."""
@@ -180,15 +75,7 @@ class ResearchWorkflowConfiguration(BaseModel):
     def from_runnable_config(
         cls, config: Optional[RunnableConfig] = None
     ) -> "ResearchWorkflowConfiguration":
-        """
-        Create configuration from RunnableConfig with environment variable fallback.
-        
-        Args:
-            config: Optional RunnableConfig containing configurable values
-            
-        Returns:
-            ResearchWorkflowConfiguration instance with merged settings
-        """
+        """Create configuration from RunnableConfig with environment fallback."""
         configurable_values = cls._extract_configurable_values(config)
         environment_values = cls._extract_environment_values()
         
@@ -233,12 +120,7 @@ class ResearchWorkflowConfiguration(BaseModel):
         return value
     
     def to_runnable_config(self) -> RunnableConfig:
-        """
-        Convert configuration to RunnableConfig format for LangGraph compatibility.
-        
-        Returns:
-            RunnableConfig with configurable parameters
-        """
+        """Convert configuration to RunnableConfig format for LangGraph."""
         return RunnableConfig(
             configurable={
                 "llm_model": self.default_llm_model,

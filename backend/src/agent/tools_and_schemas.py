@@ -1,94 +1,52 @@
-"""
-Pydantic schemas for HypothesisAI structured outputs
-Adapted from Google's schema patterns
-"""
+"""Pydantic schemas for HypothesisAI structured outputs."""
 
 from typing import List, Optional, Dict, Any, Literal
 from pydantic import BaseModel, Field
 
 
-# ============================================================================
-# SUPERVISOR SCHEMAS
-# ============================================================================
+# Supervisor Schemas
 
 class SupervisorDecision(BaseModel):
     """Supervisor routing decision"""
-    next_agent: str = Field(
-        description="Next agent to execute: literature_hunter, synthesizer, hypothesis_generator, validator, or end"
-    )
-    should_continue: bool = Field(
-        description="Whether to continue the workflow"
-    )
-    reasoning: str = Field(
-        description="Reasoning for the routing decision"
-    )
+    next_agent: str = Field(description="Next agent to execute")
+    should_continue: bool = Field(description="Whether to continue workflow")
+    reasoning: str = Field(description="Reasoning for routing decision")
 
 
-# ============================================================================
-# LITERATURE SEARCH SCHEMAS
-# ============================================================================
+# Literature Search Schemas
 
 class SearchQuery(BaseModel):
     """Individual search query"""
-    query: str = Field(
-        description="The search query string"
-    )
-    rationale: str = Field(
-        description="Why this query is relevant"
-    )
+    query: str = Field(description="The search query string")
+    rationale: str = Field(description="Why this query is relevant")
 
 
 class SearchQueryList(BaseModel):
     """List of search queries for literature search"""
-    queries: List[str] = Field(
-        description="List of search query strings"
-    )
-    rationale: str = Field(
-        description="Overall search strategy rationale"
-    )
+    queries: List[str] = Field(description="List of search query strings")
+    rationale: str = Field(description="Overall search strategy rationale")
 
 
 class SearchStrategy(BaseModel):
     """Individual arXiv search strategy"""
-    query: str = Field(
-        description="The arXiv search query string (optimized for arXiv API)"
-    )
-    focus: str = Field(
-        description="Brief description of what this strategy targets"
-    )
-    expected_paper_types: str = Field(
-        description="Types of papers this query should find"
-    )
-    priority: int = Field(
-        description="Priority level 1-3 (1=highest priority, 3=exploratory)",
-        ge=1, le=3
-    )
+    query: str = Field(description="The arXiv search query string")
+    focus: str = Field(description="Brief description of strategy target")
+    expected_paper_types: str = Field(description="Types of papers expected")
+    priority: int = Field(description="Priority level 1-3", ge=1, le=3)
 
 
 class SearchStrategies(BaseModel):
     """Multiple search strategies for comprehensive literature search"""
-    search_strategies: List[SearchStrategy] = Field(
-        description="List of 2-4 complementary search strategies"
-    )
-    rationale: str = Field(
-        description="Overall explanation of the multi-strategy approach"
-    )
-    coverage_analysis: str = Field(
-        description="How these strategies complement each other"
-    )
+    search_strategies: List[SearchStrategy] = Field(description="List of 2-4 search strategies")
+    rationale: str = Field(description="Overall multi-strategy approach explanation")
+    coverage_analysis: str = Field(description="How strategies complement each other")
 
 
 class SearchKeywords(BaseModel):
-    """Keywords for arXiv search (deprecated - use SearchStrategies)"""
-    keywords: List[str] = Field(
-        description="List of 3-5 focused search keywords/phrases"
-    )
-    rationale: str = Field(
-        description="Explanation of keyword selection strategy"
-    )
-    search_strategy: str = Field(
-        description="Brief description of how keywords will be used"
-    )
+    """Keywords for arXiv search (deprecated)"""
+    keywords: List[str] = Field(description="List of 3-5 search keywords")
+    rationale: str = Field(description="Keyword selection strategy explanation")
+    search_strategy: str = Field(description="How keywords will be used")
 
 
 class Paper(BaseModel):
@@ -111,7 +69,7 @@ class Paper(BaseModel):
     # Legacy compatibility
     @property
     def year(self) -> Optional[int]:
-        """Extract year from date_published for backward compatibility"""
+        """Extract year from date_published."""
         try:
             from datetime import datetime
             if isinstance(self.date_published, str):
@@ -129,9 +87,7 @@ class PaperList(BaseModel):
     search_strategy: str = Field(description="Search strategy used")
 
 
-# ============================================================================
-# SYNTHESIS SCHEMAS
-# ============================================================================
+# Synthesis Schemas
 
 class Pattern(BaseModel):
     """Pattern identified in literature"""
@@ -148,9 +104,7 @@ class SynthesisResult(BaseModel):
     total_papers_analyzed: int = Field(description="Number of papers analyzed")
 
 
-# ============================================================================
-# HYPOTHESIS SCHEMAS
-# ============================================================================
+# Hypothesis Schemas
 
 class Hypothesis(BaseModel):
     """Research hypothesis"""
@@ -168,9 +122,7 @@ class HypothesisList(BaseModel):
     generation_strategy: str = Field(description="Strategy used for generation")
 
 
-# ============================================================================
-# VALIDATION SCHEMAS
-# ============================================================================
+# Validation Schemas
 
 class ValidationResult(BaseModel):
     """Hypothesis validation result"""
@@ -188,18 +140,10 @@ class ValidationReport(BaseModel):
     summary: str = Field(description="Validation summary")
 
 
-# ============================================================================
-# REFLECTION SCHEMAS (similar to Google's)
-# ============================================================================
+# Reflection Schemas
 
 class Reflection(BaseModel):
     """Reflection on current research state"""
-    is_sufficient: bool = Field(
-        description="Whether current information is sufficient"
-    )
-    knowledge_gap: str = Field(
-        description="Description of what's missing or needs clarification"
-    )
-    follow_up_queries: List[str] = Field(
-        description="Follow-up queries to address gaps"
-    )
+    is_sufficient: bool = Field(description="Whether current information is sufficient")
+    knowledge_gap: str = Field(description="Description of what's missing")
+    follow_up_queries: List[str] = Field(description="Follow-up queries to address gaps")

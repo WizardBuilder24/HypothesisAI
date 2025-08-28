@@ -1,6 +1,6 @@
-"""
-Preprint Server APIs for HypothesisAI Literature Hunter Agent
-Comprehensive implementation for all major preprint servers
+"""Preprint Server APIs for HypothesisAI Literature Hunter Agent.
+
+Implementation for major preprint servers including arXiv.
 """
 
 import asyncio
@@ -21,7 +21,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 @dataclass
 class Paper:
-    """Unified paper representation across all preprint servers"""
+    """Unified paper representation across preprint servers."""
     id: str
     title: str
     abstract: str
@@ -40,13 +40,10 @@ class Paper:
 
 
 class PreprintAPI(ABC):
-    """Abstract base class for preprint server APIs"""
+    """Abstract base class for preprint server APIs."""
     
     def __init__(self, rate_limit: Tuple[int, int] = (3, 1)):
-        """
-        Args:
-            rate_limit: (calls, period_in_seconds)
-        """
+        """Initialize with rate limiting configuration."""
         self.session = None
         self.rate_limit = rate_limit
         

@@ -1,6 +1,6 @@
-"""
-Core utilities for HypothesisAI research workflow.
-Provides common functionality used across multiple nodes.
+"""Core utilities for HypothesisAI research workflow.
+
+Common functionality used across multiple nodes.
 """
 
 import os
@@ -21,7 +21,7 @@ from agent.tools.preprint_apis import ArxivAPI, Paper as PreprintPaper
 
 
 class WorkflowLogger:
-    """Handles logging of workflow stages for debugging and transparency."""
+    """Logs workflow stages for debugging and transparency."""
     
     @staticmethod
     def record_stage(
@@ -31,7 +31,7 @@ class WorkflowLogger:
         response: Any,
         additional_data: Optional[Dict[str, Any]] = None
     ) -> None:
-        """Record a workflow stage with error handling."""
+        """Record workflow stage with error handling."""
         try:
             if "stages" not in state:
                 state["stages"] = []
@@ -48,16 +48,16 @@ class WorkflowLogger:
             
             state["stages"].append(stage_data)
         except Exception:
-            # Non-critical: don't fail workflow if recording stages fails
+            # Non-critical: don't fail workflow if recording fails
             pass
 
 
 class LLMProvider:
-    """Factory for creating LLM instances based on configuration."""
+    """Factory for creating LLM instances."""
     
     @staticmethod
     def create_llm(configurable: ResearchWorkflowConfiguration, temperature: float = 0.7):
-        """Create the appropriate LLM based on configuration."""
+        """Create LLM based on configuration."""
         provider = configurable.llm_provider.lower()
         
         llm_factories = {
@@ -83,7 +83,7 @@ class LLMProvider:
 
 
 class PaperSearcher:
-    """Handles arXiv paper searching with async/sync compatibility."""
+    """Handles arXiv paper searching."""
     
     @staticmethod
     async def search_papers_async(query: str, max_results: int) -> List[PreprintPaper]:
@@ -93,7 +93,7 @@ class PaperSearcher:
     
     @staticmethod
     def search_papers_sync(query: str, max_results: int) -> List[PreprintPaper]:
-        """Perform sync paper search with proper async handling."""
+        """Perform sync paper search with async handling."""
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
@@ -153,7 +153,7 @@ class PaperProcessor:
     
     @staticmethod
     def convert_papers_to_dict(papers: List[PreprintPaper]) -> List[Dict[str, Any]]:
-        """Convert PreprintPaper objects to dict format for state storage."""
+        """Convert PreprintPaper objects to dict format."""
         paper_dicts = []
         
         for paper in papers:
@@ -180,12 +180,12 @@ class PaperProcessor:
     
     @staticmethod
     def rank_papers(papers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Rank papers by combined relevance, quality, and recency."""
+        """Rank papers by relevance, quality, and recency."""
         return sorted(papers, key=PaperProcessor.calculate_paper_score, reverse=True)
 
 
 class RateLimiter:
-    """Handles rate limiting for API calls."""
+    """Handles API rate limiting."""
     
     @staticmethod
     def apply_rate_limit(delay_seconds: float = 2.5) -> None:
@@ -253,7 +253,7 @@ class StateValidator:
 
 
 class MessageBuilder:
-    """Builds standardized messages for workflow communication."""
+    """Builds standardized workflow messages."""
     
     @staticmethod
     def build_search_complete_message(

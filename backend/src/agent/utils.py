@@ -1,6 +1,6 @@
-"""
-Utility functions for HypothesisAI research workflow.
-Provides text processing, data formatting, and analysis utilities.
+"""Utility functions for HypothesisAI research workflow.
+
+Text processing, data formatting, and analysis utilities.
 """
 
 from typing import Any, Dict, List, Optional, Set
@@ -10,7 +10,7 @@ import re
 from datetime import datetime
 
 
-# Constants for better maintainability
+# Constants
 COMMON_STOP_WORDS = {
     'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 
     'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'been', 'that', 
@@ -24,15 +24,7 @@ MAX_ABSTRACT_LENGTH_FOR_DISPLAY = 300
 
 
 def extract_research_topic_from_messages(messages: List[AnyMessage]) -> str:
-    """
-    Extract research topic from conversation messages.
-    
-    Args:
-        messages: List of conversation messages
-        
-    Returns:
-        Research topic string extracted from messages
-    """
+    """Extract research topic from conversation messages."""
     if not messages:
         return ""
     
@@ -51,16 +43,7 @@ def extract_research_topic_from_messages(messages: List[AnyMessage]) -> str:
 
 
 def format_papers_for_synthesis(papers: List[Dict[str, Any]], max_papers: int = 20) -> str:
-    """
-    Format paper collection into structured text for synthesis processing.
-    
-    Args:
-        papers: List of paper dictionaries
-        max_papers: Maximum number of papers to include
-        
-    Returns:
-        Formatted string representation of papers
-    """
+    """Format paper collection into structured text for synthesis."""
     if not papers:
         return "No papers available for synthesis."
     
@@ -73,7 +56,7 @@ def format_papers_for_synthesis(papers: List[Dict[str, Any]], max_papers: int = 
 
 
 def _create_paper_summary(paper: Dict[str, Any], paper_number: int) -> str:
-    """Create a formatted summary for a single paper."""
+    """Create formatted summary for a single paper."""
     title = paper.get('title', 'Unknown Title')
     authors = ', '.join(paper.get('authors', ['Unknown Author']))
     year = paper.get('year', 'N/A')
@@ -93,15 +76,7 @@ Relevance: {relevance_score:.2f}"""
 
 
 def create_synthesis_summary_for_prompt(synthesis: Dict[str, Any]) -> str:
-    """
-    Format synthesis results into readable text for prompting.
-    
-    Args:
-        synthesis: Synthesis result dictionary
-        
-    Returns:
-        Formatted synthesis summary
-    """
+    """Format synthesis results into readable text for prompting."""
     if not synthesis:
         return "No synthesis data available."
     
@@ -526,7 +501,7 @@ def format_synthesis_for_prompt(synthesis: Dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
-# Legacy function name aliases for backward compatibility
+# Legacy function aliases for backward compatibility
 get_research_topic = extract_research_topic_from_messages
 format_synthesis_summary = create_synthesis_summary_for_prompt
 format_hypotheses_list = create_hypotheses_summary_for_validation
@@ -537,171 +512,3 @@ generate_workflow_id = generate_unique_workflow_id
 get_current_timestamp = get_current_utc_timestamp
 format_validation_summary = create_validation_results_summary
 merge_search_queries = merge_search_query_lists
-
-
-def generate_workflow_id(query: str) -> str:
-    """
-    Generate unique workflow ID.
-    
-    Args:
-        query: Research query
-        
-    Returns:
-        Unique workflow ID
-    """
-    timestamp = datetime.utcnow().isoformat()
-    content = f"{query}_{timestamp}"
-    hash_obj = hashlib.md5(content.encode())
-    return f"wf_{hash_obj.hexdigest()[:12]}"
-
-
-def get_current_timestamp() -> str:
-    """Get current timestamp in ISO format"""
-    return datetime.utcnow().isoformat()
-
-
-def format_validation_summary(validation_results: List[Dict[str, Any]]) -> str:
-    """
-    Format validation results into a summary.
-    
-    Args:
-        validation_results: List of validation result dictionaries
-        
-    Returns:
-        Formatted validation summary
-    """
-    if not validation_results:
-        return "No validation results."
-    
-    valid_count = sum(1 for v in validation_results if v.get('is_valid'))
-    total_count = len(validation_results)
-    
-    summary_parts = [
-        f"VALIDATION SUMMARY:",
-        f"Valid Hypotheses: {valid_count}/{total_count}",
-        ""
-    ]
-    
-    for i, result in enumerate(validation_results, 1):
-        summary_parts.append(f"Hypothesis {i}: {'✓ Valid' if result.get('is_valid') else '✗ Invalid'}")
-        summary_parts.append(f"  Confidence: {result.get('confidence', 0):.2f}")
-        
-        issues = result.get('issues', [])
-        if issues:
-            summary_parts.append(f"  Issues: {', '.join(issues[:2])}")
-        
-        recommendations = result.get('recommendations', [])
-        if recommendations:
-            summary_parts.append(f"  Recommendation: {recommendations[0]}")
-    
-    return "\n".join(summary_parts)
-
-
-def merge_search_queries(existing: List[str], new: List[str]) -> List[str]:
-    """
-    Merge search query lists, avoiding duplicates.
-    
-    Args:
-        existing: Existing queries
-        new: New queries to add
-        
-    Returns:
-        Merged list of unique queries
-    """
-    # Normalize queries for comparison
-    seen = {q.lower().strip() for q in existing}
-    merged = list(existing)
-    
-    for query in new:
-        normalized = query.lower().strip()
-        if normalized not in seen:
-            seen.add(normalized)
-            merged.append(query)
-    
-    return merged
-
-
-def analyze_state(state: Dict[str, Any]) -> str:
-    """
-    Analyze the current state and return a summary for the supervisor.
-    Moved from graph.py to centralize formatting logic.
-    
-    Args:
-        state: ResearchState dictionary
-        
-    Returns:
-        Formatted status summary string
-    """
-    status_parts = []
-    
-    # Check papers
-    papers = state.get("papers", [])
-    if papers:
-        status_parts.append(f"Papers: {len(papers)} found")
-    else:
-        status_parts.append("Papers: None")
-    
-    # Check synthesis
-    if state.get("synthesis"):
-        synthesis = state["synthesis"]
-        status_parts.append(f"Synthesis: Complete ({len(synthesis.get('patterns', []))} patterns)")
-    else:
-        status_parts.append("Synthesis: Not done")
-    
-    # Check hypotheses
-    hypotheses = state.get("hypotheses", [])
-    if hypotheses:
-        status_parts.append(f"Hypotheses: {len(hypotheses)} generated")
-    else:
-        status_parts.append("Hypotheses: None")
-    
-    # Check validation
-    if state.get("validation_results"):
-        valid_count = state.get("valid_hypotheses_count", 0)
-        status_parts.append(f"Validation: Complete ({valid_count} valid)")
-    else:
-        status_parts.append("Validation: Not done")
-    
-    # Check errors
-    errors = state.get("errors", [])
-    if errors:
-        status_parts.append(f"Errors: {len(errors)}")
-    
-    return " | ".join(status_parts)
-
-
-def format_synthesis_for_prompt(synthesis: Dict[str, Any]) -> str:
-    """
-    Format synthesis dictionary for prompt.
-    Moved from graph.py to enable reuse across modules.
-    
-    Args:
-        synthesis: Synthesis result dictionary
-        
-    Returns:
-        Formatted synthesis text for prompting
-    """
-    parts = []
-    
-    # Add patterns
-    patterns = synthesis.get("patterns", [])
-    if patterns:
-        parts.append("PATTERNS IDENTIFIED:")
-        for i, pattern in enumerate(patterns, 1):
-            parts.append(f"{i}. {pattern.get('description', '')}")
-    
-    # Add key findings
-    findings = synthesis.get("key_findings", [])
-    if findings:
-        parts.append("\nKEY FINDINGS:")
-        for finding in findings:
-            parts.append(f"- {finding}")
-    
-    # Add research gaps
-    gaps = synthesis.get("research_gaps", [])
-    if gaps:
-        parts.append("\nRESEARCH GAPS:")
-        for gap in gaps:
-            parts.append(f"- {gap}")
-    
-    return "\n".join(parts)

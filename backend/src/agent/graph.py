@@ -1,6 +1,6 @@
-"""
-HypothesisAI - LangGraph Research Workflow
-Clean, maintainable implementation with 5 essential nodes
+"""HypothesisAI - LangGraph Research Workflow
+
+Multi-agent research system with supervisor orchestration.
 """
 
 import os
@@ -46,15 +46,10 @@ from agent.workflow_utils import (
 
 load_dotenv()
 
-# ============================================================================
-# SUPERVISOR NODE - The Brain
-# ============================================================================
+# Supervisor Node
 
 def supervisor(state: ResearchState, config: RunnableConfig) -> Dict[str, Any]:
-    """
-    Supervisor node that makes intelligent routing decisions for the research workflow.
-    Analyzes current state and determines the next appropriate action.
-    """
+    """Analyze current state and route to next agent."""
     configurable = ResearchWorkflowConfiguration.from_runnable_config(config)
     
     # Get LLM for decision making
@@ -119,10 +114,7 @@ def _build_supervisor_state_update(
 
 
 def route_supervisor(state: ResearchState) -> Literal["literature_hunter", "synthesizer", "hypothesis_generator", "validator", "end"]:
-    """
-    Route supervisor decisions to appropriate workflow nodes.
-    Returns the next node to execute based on supervisor's analysis.
-    """
+    """Route supervisor decisions to appropriate workflow nodes."""
     next_agent = state.get("next_agent")
     should_continue = state.get("should_continue", True)
     
@@ -137,15 +129,11 @@ def route_supervisor(state: ResearchState) -> Literal["literature_hunter", "synt
     }
     
     return next_agent if next_agent in valid_agents else "end"
-# ============================================================================
-# LITERATURE HUNTER NODE
-# ============================================================================
+
+# Literature Hunter Node
 
 def literature_hunter(state: ResearchState, config: RunnableConfig) -> Dict[str, Any]:
-    """
-    Literature Hunter node that searches for relevant academic papers using multiple
-    optimized search strategies. Consolidates and ranks results for best coverage.
-    """
+    """Search for relevant papers using multiple strategies."""
     configurable = ResearchWorkflowConfiguration.from_runnable_config(config)
     
     # Generate search strategies using LLM
@@ -294,15 +282,10 @@ def _build_literature_search_state_update(
     }
 
 
-# ============================================================================
-# KNOWLEDGE SYNTHESIZER NODE
-# ============================================================================
+# Knowledge Synthesizer Node
 
 def synthesizer(state: ResearchState, config: RunnableConfig) -> Dict[str, Any]:
-    """
-    Knowledge Synthesizer node that analyzes papers to identify patterns and gaps.
-    Provides comprehensive synthesis of the research landscape.
-    """
+    """Analyze papers to identify patterns and research gaps."""
     configurable = ResearchWorkflowConfiguration.from_runnable_config(config)
     
     # Validate we have papers to synthesize
@@ -379,15 +362,10 @@ def _build_synthesis_state_update(
     }
 
 
-# ============================================================================
-# HYPOTHESIS GENERATOR NODE
-# ============================================================================
+# Hypothesis Generator Node
 
 def hypothesis_generator(state: ResearchState, config: RunnableConfig) -> Dict[str, Any]:
-    """
-    Hypothesis Generator node that creates novel, testable research hypotheses
-    based on synthesis results.
-    """
+    """Generate novel, testable hypotheses based on synthesis."""
     configurable = ResearchWorkflowConfiguration.from_runnable_config(config)
     
     # Validate we have synthesis to work with
@@ -482,15 +460,10 @@ def _build_hypothesis_state_update(
     }
 
 
-# ============================================================================
-# VALIDATION AGENT NODE
-# ============================================================================
+# Validation Agent Node
 
 def validator(state: ResearchState, config: RunnableConfig) -> Dict[str, Any]:
-    """
-    Validation Agent node that validates hypotheses and completes the workflow.
-    Provides rigorous assessment of hypothesis validity and feasibility.
-    """
+    """Validate hypotheses for logical consistency and feasibility."""
     configurable = ResearchWorkflowConfiguration.from_runnable_config(config)
     
     # Validate we have hypotheses to validate
@@ -590,9 +563,7 @@ def _build_validation_state_update(
     }
 
 
-# ============================================================================
-# WORKFLOW GRAPH CONSTRUCTION
-# ============================================================================
+# Workflow Graph Construction
 
 # Create the graph with proper configuration
 graph_builder = StateGraph(ResearchState, config_schema=ResearchWorkflowConfiguration)

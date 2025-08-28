@@ -1,7 +1,4 @@
-"""
-State definitions for HypothesisAI research workflow
-Adapted from Google's example for hypothesis generation system
-"""
+"""State definitions for HypothesisAI research workflow."""
 
 from __future__ import annotations
 from typing import TypedDict, List, Dict, Any, Optional
@@ -11,22 +8,19 @@ import operator
 
 
 class ResearchState(TypedDict):
-    """Main state for the research workflow - flows through all agents"""
+    """Main state for the research workflow."""
     # Core message tracking
     messages: Annotated[list, add_messages]
     
     # Research query and workflow control
     query: str
     workflow_id: Optional[str]
-    # Iteration counter (incremented by supervisor each cycle)
     iteration: int
-    # Global control flag set by supervisor to end workflow
     should_continue: bool
     
     # Paper search tracking
     papers: List[Dict[str, Any]]
-    search_queries: Annotated[list, operator.add]  # All search queries used
-    # Count of papers returned by literature_hunter (len(papers))
+    search_queries: Annotated[list, operator.add]
     papers_found_count: int
     
     # Synthesis results
@@ -36,7 +30,6 @@ class ResearchState(TypedDict):
     
     # Hypothesis generation
     hypotheses: List[Dict[str, Any]]
-    # Number of hypotheses generated in latest generation step
     hypotheses_generated: int
     
     # Validation results
@@ -47,7 +40,7 @@ class ResearchState(TypedDict):
     next_agent: Optional[str]
     supervisor_reasoning: Optional[str]
 
-    # Lifecycle / completion flags (added to match graph.py returns)
+    # Completion flags
     search_completed: bool
     synthesis_completed: bool
     workflow_complete: bool
@@ -58,10 +51,10 @@ class ResearchState(TypedDict):
     min_papers_threshold: int
     num_hypotheses: int
     
-    # Stage recording for verbose output
+    # Stage recording
     stages: List[Dict[str, Any]]
     
-    # Error and retry tracking
+    # Error tracking
     errors: Annotated[list, operator.add]
     retry_counts: Dict[str, int]
     
