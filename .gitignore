@@ -206,6 +206,7 @@ __marimo__/
 # HypothesisAI specific files
 docs/
 .sandbox/
+backend/.sandbox/
 *.log
 *.sqlite
 *.db
